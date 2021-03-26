@@ -1,5 +1,6 @@
 //#include <Servo.h>
 #include <Adafruit_SoftServo.h>
+//para attiny
 
 Adafruit_SoftServo handServo;
 Adafruit_SoftServo boxServo;
