@@ -25,7 +25,6 @@ void setup()
   //randomSeed(analogRead(0));
 }
 
-
 void loop()
 {
   switchStatus = digitalRead(frontSwitchPin);
@@ -450,8 +449,20 @@ void loop()
       delay(400);
       boxServo.write(70);
       action = 1;
-    }
-    
+    } 
   }
-  
+}
+
+// We'll take advantage of the built in millis() timer that goes off
+// to keep track of time, and refresh the servo every 20 milliseconds
+volatile uint8_t counter = 0;
+SIGNAL(TIMER0_COMPA_vect) {
+  // this gets called every 2 milliseconds
+  counter += 2;
+  // every 20 milliseconds, refresh the servos!
+  if (counter >= 20) {
+    counter = 0;
+    handServo.refresh();
+    boxServo.refresh();
+  }
 }

@@ -21,7 +21,7 @@ OBJECTS=RF24.o
 ifeq ($(DRIVER), MRAA)
 OBJECTS+=spi.o gpio.o compatibility.o
 else ifeq ($(DRIVER), RPi)
-OBJECTS+=spi.o bcm2835.o interrupt.o
+OBJECTS+=spi.o bcm2835.o interrupt.o compatibility.o
 else ifeq ($(DRIVER), SPIDEV)
 OBJECTS+=spi.o gpio.o compatibility.o interrupt.o
 else ifeq ($(DRIVER), wiringPi)
@@ -35,7 +35,7 @@ all: $(LIBNAME)
 # Make the library
 $(LIBNAME): $(OBJECTS)
 	@echo "[Linking]"
-	$(CC) $(SHARED_LINKER_FLAGS) $(CFLAGS) -o $(LIBNAME) $^
+	$(CC) $(SHARED_LINKER_FLAGS) $(CFLAGS) -o $(LIBNAME) $^ $(SHARED_LINKER_LIBS)
 
 # Library parts
 RF24.o: RF24.cpp	
@@ -47,8 +47,8 @@ bcm2835.o: $(DRIVER_DIR)/bcm2835.c
 spi.o: $(DRIVER_DIR)/spi.cpp
 	$(CXX) -fPIC $(CFLAGS) -c $^
 
-compatibility.o: $(DRIVER_DIR)/compatibility.c
-	$(CC) -fPIC  $(CFLAGS) -c $(DRIVER_DIR)/compatibility.c
+compatibility.o: $(DRIVER_DIR)/compatibility.cpp
+	$(CC) -fPIC  $(CFLAGS) -c $(DRIVER_DIR)/compatibility.cpp
 
 gpio.o: $(DRIVER_DIR)/gpio.cpp
 	$(CXX) -fPIC $(CFLAGS) -c $(DRIVER_DIR)/gpio.cpp

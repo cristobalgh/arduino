@@ -44,20 +44,35 @@ char* dtostrf_internal(double number, signed char BLYNK_UNUSED width, unsigned c
 
     // Print the decimal point, but only if there are digits beyond
     if(prec > 0) {
-        *out = '.';
-        ++out;
+        *out++ = '.';
     }
 
     while(prec-- > 0) {
         remainder *= 10.0;
         if((int)remainder == 0) {
-            *out = '0';
-            ++out;
+            *out++ = '0';
         }
     }
-    sprintf(out, "%d", (int) remainder);
+    if((int)remainder != 0) {
+        sprintf(out, "%d", (int)remainder);
+    } else {
+        *out++ = '\0';
+    }
 
     return s;
+}
+
+#endif
+
+#if !defined(BLYNK_NO_LONGLONG) && defined(BLYNK_USE_INTERNAL_ATOLL)
+
+long long atoll_internal(const char *instr)
+{
+    long long retval = 0;
+    for (; *instr; instr++) {
+        retval = 10*retval + (*instr - '0');
+    }
+    return retval;
 }
 
 #endif
