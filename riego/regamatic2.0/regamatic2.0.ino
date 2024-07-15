@@ -1,12 +1,12 @@
 #include "LowPower.h"
 //para redboard y arduino uno y mini
 //seleccionar programador ArduinoISP
-//par el del depto, es placa arduino pro mini
+//para el del depto, es placa arduino pro mini
 
 int cuentatotal = 0;
 int periodo     = 360; //m, cada cuanto quiero que de el agua.
-//aumentado 11.11.19 de 120 a 240m
-//aumentado 17.11.19 de 240 a 360m
+//aumentado 11.11.19 de 120m a 240m
+//aumentado 17.11.19 de 240m a 360m
 int cuenta      = periodo * 60 / 8; //s, valor a contar para cumplir el largo de ciclo deseado
 int triego      = 8; //s, tiempo que se da el agua cada vez
 //bajado el 11.11.19 de 10 a 8 s

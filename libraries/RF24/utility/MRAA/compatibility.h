@@ -1,20 +1,18 @@
-/*
- * File:   compatiblity.h
- * Author: purinda
+/**
+ * @file compatiblity.h
+ * @author purinda
  *
  * Created on 24 June 2012, 3:08 PM
  */
 
-#ifndef COMPATIBLITY_H
-#define COMPATIBLITY_H
+#ifndef RF24_UTILITY_MRAA_COMPATIBLITY_H_
+#define RF24_UTILITY_MRAA_COMPATIBLITY_H_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stddef.h>
-#include <time.h>
-#include <sys/time.h>
+#include <stdint.h>
 
 void __msleep(int milisec);
 
@@ -22,11 +20,10 @@ void __usleep(int milisec);
 
 void __start_timer();
 
-long __millis();
+uint32_t __millis();
 
-#ifdef    __cplusplus
+#ifdef __cplusplus
 }
 #endif
 
-#endif    /* COMPATIBLITY_H */
-
+#endif // RF24_UTILITY_MRAA_COMPATIBLITY_H_

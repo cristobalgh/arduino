@@ -14,7 +14,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <Blynk/BlynkConfig.h>
-#include <Blynk/BlynkDebug.h>
+#include <Blynk/BlynkHelpers.h>
 
 #define BLYNK_PARAM_KV(k, v) k "\0" v "\0"
 #define BLYNK_PARAM_PLACEHOLDER_64 "PlaceholderPlaceholderPlaceholderPlaceholderPlaceholderPlaceholder"
@@ -25,6 +25,8 @@ extern char*        dtostrf_internal(double number, signed char width, unsigned 
 
 #if !defined(BLYNK_NO_LONGLONG)
 extern long long    atoll_internal(const char *s);
+extern char*        lltoa_internal(long long val, char* buf, unsigned buf_len, int base);
+extern char*        ulltoa_internal(unsigned long long val, char* buf, unsigned buf_len, int base);
 #endif
 
 class BlynkParam
@@ -102,8 +104,11 @@ public:
 
     void*  getBuffer() const { return (void*)buff; }
     size_t getLength() const { return len; }
+    size_t getBuffSize() const { return buff_size; }
 
     // Modification
+    void clear() { len = 0; }
+
     void add(int value);
     void add(unsigned int value);
     void add(long value);
@@ -115,7 +120,6 @@ public:
     void add(double value);
 #endif
     void add(const char* str);
-    void add(const void* b, size_t l);
 #if defined(ARDUINO) || defined(SPARK) || defined(PARTICLE)
     void add(const String& str);
 #if defined(BLYNK_HAS_PROGMEM)
@@ -139,6 +143,10 @@ public:
         add(key);
         add(val);
     }
+
+    void remove_key(const char* key);
+
+    void add_raw(const void* b, size_t l);
 
 protected:
     char*    buff;
@@ -186,7 +194,30 @@ BlynkParam::iterator BlynkParam::operator[](const char* key) const
 }
 
 inline
-void BlynkParam::add(const void* b, size_t l)
+void BlynkParam::remove_key(const char* key)
+{
+    bool found;
+    do {
+        found = false;
+        const iterator e = end();
+        for (iterator it = begin(); it < e; ++it) {
+            if (!strcmp(it.asStr(), key)) {
+                const char* key = it.asStr();
+                ++it; ++it;
+                const char* next = it.asStr();
+                memmove((void*)key, next, (buff+len)-next);
+                len -= (next-key);
+                found = true;
+                break;
+            }
+            ++it;
+            if (it >= e) break;
+        }
+    } while (found);
+}
+
+inline
+void BlynkParam::add_raw(const void* b, size_t l)
 {
     if (len + l > buff_size)
         return;
@@ -201,7 +232,7 @@ void BlynkParam::add(const char* str)
         buff[len++] = '\0';
         return;
     }
-    add(str, strlen(str)+1);
+    add_raw(str, strlen(str)+1);
 }
 
 #if defined(ARDUINO) || defined(SPARK) || defined(PARTICLE)
@@ -215,7 +246,7 @@ void BlynkParam::add(const String& str)
     size_t len = str.length()+1;
     char buff[len];
     const_cast<String&>(str).toCharArray(buff, len);
-    add(buff, len);
+    add_raw(buff, len);
 #else
     add(str.c_str());
 #endif
@@ -246,7 +277,7 @@ void BlynkParam::add(const __FlashStringHelper* ifsh)
     inline
     void BlynkParam::add(int value)
     {
-        char str[2 + 8 * sizeof(value)];
+        char str[2 + 3 * sizeof(value)];
         itoa(value, str, 10);
         add(str);
     }
@@ -254,7 +285,7 @@ void BlynkParam::add(const __FlashStringHelper* ifsh)
     inline
     void BlynkParam::add(unsigned int value)
     {
-        char str[1 + 8 * sizeof(value)];
+        char str[1 + 3 * sizeof(value)];
         utoa(value, str, 10);
         add(str);
     }
@@ -262,7 +293,7 @@ void BlynkParam::add(const __FlashStringHelper* ifsh)
     inline
     void BlynkParam::add(long value)
     {
-        char str[2 + 8 * sizeof(value)];
+        char str[2 + 3 * sizeof(value)];
         ltoa(value, str, 10);
         add(str);
     }
@@ -270,26 +301,28 @@ void BlynkParam::add(const __FlashStringHelper* ifsh)
     inline
     void BlynkParam::add(unsigned long value)
     {
-        char str[1 + 8 * sizeof(value)];
+        char str[1 + 3 * sizeof(value)];
         ultoa(value, str, 10);
         add(str);
     }
 
+#if !defined(BLYNK_NO_LONGLONG)
+
     inline
-    void BlynkParam::add(long long value)  // TODO: this currently adds just a long
+    void BlynkParam::add(long long value)
     {
-        char str[2 + 8 * sizeof(value)];
-        ltoa(value, str, 10);
-        add(str);
+        char str[2 + 3 * sizeof(value)];
+        add(lltoa_internal(value, str, sizeof(str), 10));
     }
 
     inline
-    void BlynkParam::add(unsigned long long value) // TODO: this currently adds just a long
+    void BlynkParam::add(unsigned long long value)
     {
-        char str[1 + 8 * sizeof(value)];
-        ultoa(value, str, 10);
-        add(str);
+        char str[1 + 3 * sizeof(value)];
+        add(ulltoa_internal(value, str, sizeof(str), 10));
     }
+
+#endif
 
 #ifndef BLYNK_NO_FLOAT
 

@@ -3,16 +3,54 @@ extern "C" {
   #include "user_interface.h"
 
   void app_loop();
+  void restartMCU();
 }
 
 #include "Settings.h"
 #include <BlynkSimpleEsp8266_SSL.h>
+
+#if defined(BLYNK_USE_LITTLEFS)
+  #include <LittleFS.h>
+  #define BLYNK_FS LittleFS
+#elif defined(BLYNK_USE_SPIFFS)
+  #if defined(ESP32)
+    #include <SPIFFS.h>
+  #elif defined(ESP8266)
+    #include <FS.h>
+  #endif
+  #define BLYNK_FS SPIFFS
+#endif
+#if defined(BLYNK_FS) && defined(ESP8266)
+  #define BLYNK_FILE_READ  "r"
+  #define BLYNK_FILE_WRITE "w"
+#endif
+
+#ifndef BLYNK_NEW_LIBRARY
+#error "Old version of Blynk library is in use. Please replace it with the new one."
+#endif
+
+#if !defined(BLYNK_TEMPLATE_NAME) && defined(BLYNK_DEVICE_NAME)
+#define BLYNK_TEMPLATE_NAME BLYNK_DEVICE_NAME
+#endif
+
+#if !defined(BLYNK_TEMPLATE_ID) || !defined(BLYNK_TEMPLATE_NAME)
+#error "Please specify your BLYNK_TEMPLATE_ID and BLYNK_TEMPLATE_NAME"
+#endif
+
+#if defined(BLYNK_AUTH_TOKEN)
+#error "BLYNK_AUTH_TOKEN is assigned automatically when using Blynk.Edgent, please remove it from the configuration"
+#endif
+
+BlynkTimer edgentTimer;
+
 #include "BlynkState.h"
 #include "ConfigStore.h"
 #include "ResetButton.h"
 #include "ConfigMode.h"
 #include "Indicator.h"
 #include "OTA.h"
+#include "Console.h"
+
 
 inline
 void BlynkState::set(State m) {
@@ -27,26 +65,24 @@ void BlynkState::set(State m) {
 
 void printDeviceBanner()
 {
+#ifdef BLYNK_PRINT
   Blynk.printBanner();
-  DEBUG_PRINT("--------------------------");
-  DEBUG_PRINT(String("Product:  ") + BLYNK_DEVICE_NAME);
-  DEBUG_PRINT(String("Hardware: ") + BOARD_HARDWARE_VERSION);
-  DEBUG_PRINT(String("Firmware: ") + BLYNK_FIRMWARE_VERSION " (build " __DATE__ " " __TIME__ ")");
+  BLYNK_PRINT.println("----------------------------------------------------");
+  BLYNK_PRINT.print(" Device:    "); BLYNK_PRINT.println(getWiFiName());
+  BLYNK_PRINT.print(" Firmware:  "); BLYNK_PRINT.println(BLYNK_FIRMWARE_VERSION " (build " __DATE__ " " __TIME__ ")");
   if (configStore.getFlag(CONFIG_FLAG_VALID)) {
-    DEBUG_PRINT(String("Token:    ...") + (configStore.cloudToken+28));
+    BLYNK_PRINT.print(" Token:     ");
+    BLYNK_PRINT.println(String(configStore.cloudToken).substring(0,4) +
+                " - •••• - •••• - ••••");
   }
-  DEBUG_PRINT(String("Device:   ") + BLYNK_INFO_DEVICE + " @ " + ESP.getCpuFreqMHz() + "MHz");
-  DEBUG_PRINT(String("MAC:      ") + WiFi.macAddress());
-  DEBUG_PRINT(String("Flash:    ") + ESP.getFlashChipRealSize() / 1024 + "K");
-  String coreVer = ESP.getCoreVersion();
-  coreVer.replace("_", ".");
-  DEBUG_PRINT(String("ESP core: ") + coreVer);
-  DEBUG_PRINT(String("ESP SDK:  ") + ESP.getSdkVersion());
-  DEBUG_PRINT(String("Boot Ver: ") + ESP.getBootVersion());
-  DEBUG_PRINT(String("Boot Mode:") + ESP.getBootMode());
-  DEBUG_PRINT(String("FW info:  ") + ESP.getSketchSize() + "/" + ESP.getFreeSketchSpace() + ", MD5:" + ESP.getSketchMD5());
-  DEBUG_PRINT(String("Free mem: ") + ESP.getFreeHeap());
-  DEBUG_PRINT("--------------------------");
+  BLYNK_PRINT.print(" Platform:  "); BLYNK_PRINT.println(String(BLYNK_INFO_DEVICE) + " @ " + ESP.getCpuFreqMHz() + "MHz");
+  BLYNK_PRINT.print(" Boot ver:  "); BLYNK_PRINT.println(ESP.getBootVersion());
+  BLYNK_PRINT.print(" SDK:       "); BLYNK_PRINT.println(ESP.getSdkVersion());
+  BLYNK_PRINT.print(" ESP Core:  "); BLYNK_PRINT.println(ESP.getCoreVersion());
+  BLYNK_PRINT.print(" Flash:     "); BLYNK_PRINT.println(String(ESP.getFlashChipSize() / 1024) + "K");
+  BLYNK_PRINT.print(" Free mem:  "); BLYNK_PRINT.println(ESP.getFreeHeap());
+  BLYNK_PRINT.println("----------------------------------------------------");
+#endif
 }
 
 void runBlynkWithChecks() {
@@ -67,11 +103,16 @@ class Edgent {
 public:
   void begin()
   {
+
+#ifdef BLYNK_FS
+    BLYNK_FS.begin();
+#endif
+
     indicator_init();
     button_init();
     config_init();
-
     printDeviceBanner();
+    console_init();
 
     if (configStore.getFlag(CONFIG_FLAG_VALID)) {
       BlynkState::set(MODE_CONNECTING_NET);
@@ -80,6 +121,13 @@ public:
       BlynkState::set(MODE_CONNECTING_NET);
     } else {
       BlynkState::set(MODE_WAIT_CONFIG);
+    }
+
+    if (!String(BLYNK_TEMPLATE_ID).startsWith("TMPL") ||
+        !strlen(BLYNK_TEMPLATE_NAME)
+    ) {
+      DEBUG_PRINT("Invalid configuration of TEMPLATE_ID / TEMPLATE_NAME");
+      while (true) { delay(100); }
     }
   }
 
@@ -98,12 +146,10 @@ public:
     }
   }
 
-};
-
-Edgent BlynkEdgent;
-BlynkTimer timer;
+} BlynkEdgent;
 
 void app_loop() {
-    timer.run();
+    edgentTimer.run();
+    edgentConsole.run();
 }
 

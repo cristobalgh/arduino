@@ -1,6 +1,6 @@
 
+#include <mraa.h> // mraa_strresult(), mraa_result_t
 #include "spi.h"
-#include "mraa.h"
 
 SPI::SPI()
 {
@@ -9,13 +9,35 @@ SPI::SPI()
 
 void SPI::begin(int busNo, uint32_t spi_speed)
 {
-    mspi = new mraa::Spi(
-            busNo); // init mraa spi bus, it will handle chip select internally. For CS pin wiring user must check SPI details in hardware manual
+    // init mraa spi bus, it will handle chip select internally. For CS pin wiring user must check SPI details in hardware manual
+    mspi = new mraa::Spi(busNo);
 
-    mspi->mode(mraa::SPI_MODE0);
-    mspi->bitPerWord(8);
-    mspi->frequency(
-            spi_speed); // Prophet: this will try to set 8MHz, however MRAA will reset to max platform speed and syslog a message of it
+    mraa::Result result;
+
+    result = mspi->mode(mraa::SPI_MODE0);
+    if (result != mraa::Result::SUCCESS) {
+        std::string msg = "[SPI::begin] Could not set bus mode;";
+        msg += mraa_strresult((mraa_result_t)result);
+        throw SPIException(msg);
+        return;
+    }
+
+    result = mspi->bitPerWord(8);
+    if (result != mraa::Result::SUCCESS) {
+        std::string msg = "[SPI::begin] Could not set bus bits per word;";
+        msg += mraa_strresult((mraa_result_t)result);
+        throw SPIException(msg);
+        return;
+    }
+
+    // Prophet: this will try to set 8MHz, however MRAA will reset to max platform speed and syslog a message of it
+    result = mspi->frequency(spi_speed);
+    if (result != mraa::Result::SUCCESS) {
+        std::string msg = "[SPI::begin] Could not set bus frequency;";
+        msg += mraa_strresult((mraa_result_t)result);
+        throw SPIException(msg);
+        return;
+    }
 }
 
 void SPI::end()
@@ -29,14 +51,14 @@ void SPI::end()
 void SPI::setBitOrder(uint8_t bit_order)
 {
     if (mspi != NULL) {
-        mspi->lsbmode((mraa_boolean_t) bit_order);
+        mspi->lsbmode((mraa_boolean_t)bit_order);
     } // Prophet: bit_order
 }
 
 void SPI::setDataMode(uint8_t data_mode)
 {
     if (mspi != NULL) {
-        mspi->mode((mraa::Spi_Mode) data_mode);
+        mspi->mode((mraa::Spi_Mode)data_mode);
     }
 }
 
@@ -49,7 +71,6 @@ void SPI::setClockDivider(uint32_t spi_speed)
 
 void SPI::chipSelect(int csn_pin)
 {
-
 }
 
 SPI::~SPI()
