@@ -1,4 +1,8 @@
 // P4.75 HUB12 1/8 scan 64x16 de un solo color, matrix control by Damián G. Lasso www.LASSO-TECH.com 09/2025
+// funciona con la hoja
+// https://docs.google.com/spreadsheets/d/1zATPOVYvM4deE6Tu0Ynbwy8HzEikA4DD0I224S6h0Ag/edit?gid=0#gid=0
+
+#include <time.h>
 /* //ESP32
 #define oe_pin     13 // OE en conector IDC HUB12
 #define a_pin      12 // A en conector IDC HUB12
@@ -17,10 +21,14 @@
 #define dato_pinR  8 // R o Data en conector IDC HUB12
 #define c_pin      7 // C en conector IDC HUB12
 
-uint8_t mensaje[] = {0b11110111, 0b10000000, 0b11100011, 0b10000100, 0b11110011, 0b00000000, 0b11111111, 0b00000000, 0b00000110, 0b10001001, 0b00001001, 0b00001001, 0b10001001, 0b00000000, 0b11111111, 0b00000000, 0b10001001, 0b10001010, 0b10001010, 0b11111010, 0b10001010, 0b10001010, 0b10001010, 0b10001001, 0b11001111, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b11001000, 0b01001010, 0b01001010, 0b01011011, 0b01101010, 0b01001001, 0b00000000, 0b11111111, 0b00000000,  0b01000100, 0b01000100, 0b11000111, 0b01000100, 0b10000111, 0b00000000, 0b00000000, 0b00000000, 0b10100010, 0b00100010, 0b00100010, 0b00111110, 0b00100010, 0b00100010, 0b00010100, 0b00001000, 0b00001000, 0b00001000, 0b0001000, 0b00001000, 0b0001001, 0b00001010, 0b00001100, 0b00001000, 0b00100100, 0b00101001, 0b00111001, 0b10100101, 0b00111001, 0b00000000, 0b11111111, 0b00000000, 0b11001111, 0b00101000, 0b00101110, 0b00101000, 0b00101111, 0b00000000, 0b11111111, 0b00000000, 0b00101000, 0b00101000, 0b00101000, 0b00101111, 0b00101000, 0b10101000, 0b01100101, 0b00100010,0b10101000, 0b10101000, 0b10101000, 0b10101000, 0b10101110, 0b10101001, 0b00101001, 0b00101110, 0b01110010, 0b01001010, 0b01110011, 0b01001010, 0b01110001, 0b00000000, 0b11111111, 0b00000000, 0b01001110, 0b01000000, 0b11000000, 0b01000000, 0b10000000, 0b00000000, 0b11111111, 0b00000000, 0b00111000, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b00111000, 0b00000000, 0b00010000, 0b01010100, 0b00111000, 0b11111110, 0b00111000, 0b01010100, 0b00010000};
+uint8_t mensaje[] = {
+0b00000000, 0b00000000, 0b00000001, 0b00000010, 0b00000100, 0b00001001, 0b00010010, 0b00100100, 0b01001001, 0b10110110, 0b00110110, 0b01001001, 0b10010100, 0b00100010, 0b01000001, 0b10000000, 0b01001001, 0b10010010, 0b00100100, 0b01001000, 0b10010000, 0b00100000, 0b01000000, 0b10000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b10000000, 0b01000000, 0b00100000, 0b10010000, 0b01001000, 0b00100100, 0b10010010,  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b01001001, 0b00100100, 0b00010010, 0b00001001, 0b00000100, 0b00000010, 0b00000001, 0b00000000, 0b00000001, 0b10000010, 0b01000100, 0b00101001, 0b10010010, 0b01101100, 0b01101101, 0b10010010, 0b00000001, 0b00000010, 0b00000100, 0b00001001, 0b00010010, 0b00100100, 0b01001001, 0b10010010, 0b00100100, 0b11011010, 0b11011001, 0b00100100, 0b01010010, 0b10001001, 0b00000100, 0b00000010, 0b00100100, 0b01001000, 0b10010000, 0b00100000, 0b01000000, 0b10000000, 0b00000000, 0b00000000,0b00000001, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b10000000, 0b01000000, 0b00100000, 0b10010000, 0b01001000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000001, 0b00000010, 0b00100100, 0b10010010, 0b01001001, 0b00100100, 0b00010010, 0b00001001, 0b00000101, 0b00000010, 0b00000100, 0b00001001, 0b0001001, 0b1010010, 0b01001001, 0b10110010, 0b10110100, 0b01001000};
+
+size_t len = sizeof(mensaje) / sizeof(mensaje[0]);
 
 int fila = 0;
 int bit = 0;
+int aux = 0;
 
 void setup() 
 {  
@@ -40,8 +48,33 @@ void setup()
   digitalWrite(dato_pinR, 0);  
 }
 
+void randomizeBits(uint8_t *mensaje, size_t length) {
+    for (size_t i = 0; i < length; i++) {
+        uint8_t byte = 0;
+        for (int bit = 0; bit < 8; bit++) {
+            if (rand() % 2) {
+                byte |= (1 << bit);
+            }
+        }
+        mensaje[i] = byte;
+    }
+}
+
+void rotateLeft(uint8_t *mensaje, size_t length) {
+    for (size_t i = 0; i < length; i++) {
+        uint8_t msb = (mensaje[i] & 0x80) >> 7; // Guardamos el bit más significativo
+        mensaje[i] = (mensaje[i] << 1) | msb;   // Shift left y colocamos el MSB como LSB
+    }
+}
+
 void loop() 
 {
+
+ if(aux >=5000){
+  randomizeBits(mensaje, len);
+  //rotateLeft(mensaje, len);
+  aux = 0;
+  }
   digitalWrite(oe_pin, 0); // habilita la matriz, enciende los LEDs
 
   if(fila == 0) { digitalWrite(a_pin, 0); digitalWrite(b_pin, 0); digitalWrite(c_pin, 0); } // Selectores de fila
@@ -61,14 +94,17 @@ void loop()
       digitalWrite(dato_pinR, bit);     // escritura del bit en la salida 
       digitalWrite(clk_pin, 1);         // primer movimiento para consolidar el bit
       digitalWrite(clk_pin, 0);         // segundo movimiento para consolidar el bit
-    }    
+      //delay(1);
+    }
+    //delay(5);    
   }
-
+  
   digitalWrite(sclk_pin, 1); // primer movimiento para consolidar el byte
   digitalWrite(sclk_pin, 0); // segundo movimiento para consolidar el byte
   digitalWrite(oe_pin, 1);   // deshabilita la matriz, apaga los LEDs
   //delay(1); // atenuación, opcional
 
   fila++; // cambio de fila
-  if(fila > 7) fila = 0;   
+  if(fila > 7) fila = 0;
+  aux++;   
 }
