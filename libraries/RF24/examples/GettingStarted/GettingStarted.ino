@@ -74,16 +74,14 @@ void setup() {
   // number of bytes we need to transmit a float
   radio.setPayloadSize(sizeof(payload));  // float datatype occupies 4 bytes
 
-  // set the TX address of the RX node into the TX pipe
-  radio.openWritingPipe(address[radioNumber]);  // always uses pipe 0
+  // set the TX address of the RX node for use on the TX pipe (pipe 0)
+  radio.stopListening(address[radioNumber]);  // put radio in TX mode
 
   // set the RX address of the TX node into a RX pipe
   radio.openReadingPipe(1, address[!radioNumber]);  // using pipe 1
 
-  // additional setup specific to the node's role
-  if (role) {
-    radio.stopListening();  // put radio in TX mode
-  } else {
+  // additional setup specific to the node's RX role
+  if (!role) {
     radio.startListening();  // put radio in RX mode
   }
 
@@ -121,7 +119,7 @@ void loop() {
     // This device is a RX node
 
     uint8_t pipe;
-    if (radio.available(&pipe)) {              // is there a payload? get the pipe number that recieved it
+    if (radio.available(&pipe)) {              // is there a payload? get the pipe number that received it
       uint8_t bytes = radio.getPayloadSize();  // get the size of the payload
       radio.read(&payload, bytes);             // fetch payload from FIFO
       Serial.print(F("Received "));

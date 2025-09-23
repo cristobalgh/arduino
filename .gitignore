@@ -1,0 +1,54 @@
+# Arduino IDE generated files
+*.elf
+*.hex
+*.bin
+*.eep
+*.lst
+*.map
+*.sym
+*.suo
+*.user
+*.o
+*.d
+*.gcno
+*.gcda
+*.gcov
+*.ipch
+*.aps
+*.ncb
+*.obj
+*.pch
+*.pdb
+*.res
+*.sbr
+*.tlog
+*.vcproj
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.layout
+*.bak
+*.old
+*.tmp
+*.log
+*.swp
+*.swo
+*.orig
+*.rej
+*.diff
+*.patch
+
+# Platform specific build folders (e.g., for ESP32, ESP8266)
+.pio/
+build/
+.vscode/
+libraries/
+
+# Library specific files (if you are managing libraries outside of the project)
+# For example, if you include a library directly in the project and don't want to track its build artifacts
+# my_library/build/
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
+desktop.ini

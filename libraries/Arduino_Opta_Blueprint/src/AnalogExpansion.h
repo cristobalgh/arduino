@@ -145,13 +145,7 @@ public:
    *    - MUX is on the 100R resistor
    *    - RANGE is 0-2.5V volt externally powered
    *    - PULL DOWN is DISABLE (the parameter 'pull_down' is disregarded)
-   *
-   * Note: in case OA_ADC_NOT_USED is used as 'type' parameter this function
-   * does nothing (since it makes no sense to "begin" a channel as ADC and tell
-   * the ADC is not used). This value is used when the channel is configured for
-   * "other" than ADC (typically DAC or DI) and the ADC function is used "in
-   * parallel" to the primary function to say there is no need of additional ADC
-   * configuration*/
+   */
   void beginChannelAsAdc(uint8_t ch, OaAdcType_t type, bool pull_down,
                          bool rejection, bool diagnostic, uint8_t ma);
   void addAdcOnChannel(uint8_t ch, OaAdcType_t type, bool pull_down,
@@ -233,17 +227,42 @@ public:
 
   void beginChannelAsHighImpedance(uint8_t ch);
 
-  /*
-   * Set /get channel functions
+  /* PWM Functions:
+   * valid channels number for PWM functions from OA_PWM_CH_0 to OA_PWM_CH_3
+   * there is also OA_PWM_CH_FIRST (equal to OA_PWM_CH_0) and OA_PWM_CH_LAST 
+   * (OA_PWM_CH_3)
    */
-  /* period and pulse in micro seconds */
+  /* Set period and pulse in micro seconds for the channel ch 
+     valid channels are from OA_PWM_CH_0 to OA_PWM_CH_3 */
   void setPwm(uint8_t ch, uint32_t period, uint32_t pulse);
-  /* get Pwm period in micro seconds */
-  uint32_t getPwmPeriod(uint8_t ch);
-  /* get Pwm pulse in micro seconds */
-  uint32_t getPwmPulse(uint8_t ch);
 
+  /* Get period in micro seconds for the channel ch 
+     valid channels are from OA_PWM_CH_0 to OA_PWM_CH_3 
+     for compatibility reason this function also accept value from 0 to 3 however
+     this is deprecated 
+     Please note that this function only return the last value send to the
+     expansion */
+  uint32_t getPwmPeriod(uint8_t ch);
+  /* Get period in micro seconds for the channel ch 
+     valid channels are from OA_PWM_CH_0 to OA_PWM_CH_3 
+     for compatibility reason this function also accept value from 0 to 3 however
+     this is deprecated 
+     Please note that this function only return the last value send to the
+     expansion */
+  uint32_t getPwmPulse(uint8_t ch);
+  /* Get frequency in Hz for the channel ch 
+     valid channels are from OA_PWM_CH_0 to OA_PWM_CH_3 
+     for compatibility reason this function also accept value from 0 to 3 however
+     this is deprecated 
+     Please note that this function only return the last value send to the
+     expansion*/
   float getPwmFreqHz(uint8_t ch);
+  /* Get duty cycle in % for the channel ch 
+     valid channels are from OA_PWM_CH_0 to OA_PWM_CH_3 
+     for compatibility reason this function also accept value from 0 to 3 however
+     this is deprecated 
+     Please note that this function only return the last value send to the
+     expansion*/
   float getPwmPulsePerc(uint8_t ch);
 
   /* get adc converter bits of channel ch (if ch is configured as ADC)*/
@@ -283,6 +302,46 @@ public:
   void switchLedOff(uint8_t pin, bool update = true);
   void updateLeds();
 
+  /* functions to handle timeout default values */
+
+  /* set the timeout in ms for the expansion to use default values 
+     0xFFFF disable the timeout 
+     any other value would cause the expansion to reset its output 
+     (DAC and PWM to the default values set by the functions below) if
+     the expansion does not receive any I2C command from the controller
+     for more than timeout ms 
+     if timeout is set but setDefaul.. functions are not used the 
+     outputs are set to off after timeout */
+  void setTimeoutForDefaultValues(uint16_t timeout_ms);
+  
+  /* by using setDefaultDac you set the default DAC value for the channel ch 
+     this works both for Voltage and Current DAC (but pay attention that
+     the same value has different meaning depending if the channel is DAC
+     voltage or current -> a maximum value of 8191 corresponds to 10 V or 25 mA) */
+  void setDefaultDac(uint8_t ch, uint16_t value);
+  /* by using this function you set the DAC default value in Volts (0-11V)
+     but ONLY if the channel is configured as DAC voltage otherwise fails
+     (return true if the configuration is correct)
+     To use this function the channels must have been configured as Voltage DAC
+     in advance*/
+  bool setDefaultPinVoltage(uint8_t ch, float voltage );
+  /* by using this function you set the DAC default value in Current (0-25V)
+     but ONLY if the channel is configured as DAC current otherwise fails
+     (return true if the configuration is correct)
+     To use this function the channels must have been configured as Current DAC
+     in advance*/
+  bool setDefaultPinCurrent(uint8_t ch, float current);
+  
+  void setDefaultPwm(uint8_t ch, uint32_t period, uint32_t pulse);
+
+  static void setTimeoutForDefaultValues(Controller &ctrl, uint8_t device, uint16_t timeout_ms);
+  /* by using setDefaultDac you set the default DAC value for the channel ch 
+     this works both for Voltage and Current DAC (but pay attention that
+     the same value has different meaning depending if the channel is DAC
+     voltage or current -> a maximum value of 8191 corresponds to 10 V or 25 mA) */
+  static void setDefaultDac(Controller &ctrl, uint8_t device, uint8_t ch, uint16_t value);
+  static void setDefaultPwm(Controller &ctrl, uint8_t device, uint8_t ch, uint32_t period, uint32_t pulse);
+
   /* if ch is configured as DAC the value (max value 8191) is set as
    * DAC converter bits (period is disregarded in this case)
    * if ch is a PWM channel then value is pulse and period is period as
@@ -303,7 +362,7 @@ public:
 
   /* static start up function, this function must contains the code
    * needed to initialize the harware correctly for ALL the possible
-   * expansions present (up to 10)
+   * expansions present.
    * This is done to support hot plug, as soon the expansions are
    * discovered by the controller, the controller itself will call
    * this function as a callback set up correctly the expansion */
@@ -311,29 +370,52 @@ public:
 
   void setProductData(uint8_t *data, uint8_t len);
 
-  bool isChDac(uint8_t ch);
-  bool isChAdc(uint8_t ch);
-  bool isChVoltageDac(uint8_t ch);
-  bool isChCurrentDac(uint8_t ch);
-  bool isChVoltageAdc(uint8_t ch);
-  bool isChCurrentAdc(uint8_t ch);
-  bool isChDigitalInput(uint8_t ch);
-  bool isChRtd(uint8_t ch);
-  bool isChRtd2Wires(uint8_t ch);
-  bool isChRtd3Wires(uint8_t ch);
-  bool isChHighImpedance(uint8_t ch);
+  /* the following functions can be called to obtain the current configuration
+     for the channel `ch` 
+    
+     If the actual_hw configuration is `false` (default value) the function
+     returns the status of the last configuration command sent to the expansion
+     (no I2C transaction between controller and expansion)
+
+     The expansion, upon receiving the configuration command, set up the channel
+     as quickly as possible (a few milliseconds) however the time is not deterministic
+     and could depends on the previous channel configuration
+
+     To be sure that expasion has actually set up the channel to the last 
+     requested configuration, the following functions can be called with
+     the parameter `actual_hw` set to true.
+
+     This will trigger an I2C transaction from controller and expansion to check
+     if the expansion itself has actually set up the channel to the function.
+     In most cases this `actual` check is not necessary (the expansion reacts fast)
+     and it is time consuming because the I2C transaction takes time.
+     So it is suggested to keep actual_hw to false as much as possible and use
+     the function with actual_hw set to true only in critical application
+     (for example the output is set once in a while and so the application
+     must be absolutly sure that the channel is ready to get the output value)
+  */
+
+  bool isChDac(uint8_t ch, bool actual_hw = false);
+  bool isChAdc(uint8_t ch, bool actual_hw = false);
+  bool isChVoltageDac(uint8_t ch, bool actual_hw = false);
+  bool isChCurrentDac(uint8_t ch, bool actual_hw = false);
+  bool isChVoltageAdc(uint8_t ch, bool actual_hw = false);
+  bool isChCurrentAdc(uint8_t ch, bool actual_hw = false);
+  bool isChDigitalInput(uint8_t ch, bool actual_hw = false);
+  bool isChRtd(uint8_t ch, bool actual_hw = false);
+  bool isChRtd2Wires(uint8_t ch, bool actual_hw = false);
+  bool isChRtd3Wires(uint8_t ch, bool actual_hw = false);
+  bool isChHighImpedance(uint8_t ch, bool actual_hw = false);
 
 protected:
   bool verify_address(unsigned int add) override;
-  
-
   static OaChannelCfg cfgs[OPTA_CONTROLLER_MAX_EXPANSION_NUM];
 
   uint8_t msg_begin_adc();
   uint8_t msg_begin_di();
   uint8_t msg_begin_dac();
   uint8_t msg_begin_rtd();
-  uint8_t msg_set_rtd_time();
+  uint8_t msg_send_time();
   uint8_t msg_begin_high_imp();
   bool parse_oa_ack();
   bool adc_registers_defined();
@@ -352,8 +434,15 @@ protected:
   uint8_t msg_set_led();
   uint8_t msg_set_all_dac();
 
+  uint8_t msg_get_ch_function();
+  bool parse_get_ch_function();
+
   uint8_t msg_get_all_ai();
   bool parse_ans_get_all_ai();
+
+  CfgFun_t get_channel_function(uint8_t ch);
+
+
 };
 
 } // namespace Opta

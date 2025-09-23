@@ -27,18 +27,26 @@
 #include "boot.h"
 #include "sys/_stdint.h"
 #include <cstdint>
+#include <queue>
 
 // #define DEBUG_ENABLE_SPI
 // #define DEBUG_SERIAL
 // #define DEBUG_ANALOG_PARSE_MESSAGE
 //
-#define BUFF_DIM 4
+#define SPI_COMM_BUFF_DIM 4
 
-/* definition of "fake" channel for those register that have a SINGLE REGISTER
- * for each Analog Device (instead other kind of register have 4 register all
- * equal one for each channel)*/
-#define OA_DUMMY_CHANNEL_DEVICE_0 101
-#define OA_DUMMY_CHANNEL_DEVICE_1 102
+
+class ChConfig {
+public:
+  CfgFun_t f;
+  bool write;
+  ChConfig() {
+    f = CH_FUNC_UNDEFINED;
+    write = false;
+  }
+}; 
+
+
 
 class OptaAnalog : public Module {
 private:
@@ -46,7 +54,8 @@ private:
    * Data structures used to hold information about Analog Device AD74412R
    * --------------------------------------------------------------------- */
   CfgFun_t fun[OA_AN_CHANNELS_NUM]; // function configuration x channel
-  volatile CfgFun_t update_fun[OA_AN_CHANNELS_NUM]; // function update configuration x channel
+  std::queue<ChConfig> update_fun[OA_AN_CHANNELS_NUM]; // function update configuration x channel
+  CfgFun_t output_fun[OA_AN_CHANNELS_NUM]; // function for output
   CfgPwm pwm[OA_PWM_CHANNELS_NUM];  // pwm configuration x channel
   CfgAdc adc[OA_AN_CHANNELS_NUM];   // adc configuration x channel
   CfgDi din[OA_AN_CHANNELS_NUM];    // d[igital]i[nput] configuration x channel
@@ -54,12 +63,14 @@ private:
   CfgDac dac[OA_AN_CHANNELS_NUM];   // dac configuration x channel
   CfgRtd rtd[OA_AN_CHANNELS_NUM];   // rtd configuration x channel
 
+  volatile uint16_t dac_defaults[OA_AN_CHANNELS_NUM];
+  volatile uint32_t pwm_period_defaults[OA_PWM_CHANNELS_NUM];
+  volatile uint32_t pwm_pulse_defaults[OA_PWM_CHANNELS_NUM];
   volatile bool dac_value_updated[OA_AN_CHANNELS_NUM];
   volatile uint16_t dac_values[OA_AN_CHANNELS_NUM];
 
-  uint16_t alert[OA_AN_DEVICES_NUM];
-  uint16_t aMask[OA_AN_DEVICES_NUM]; // a[lert]Mask
-  uint16_t state[OA_AN_DEVICES_NUM];
+  uint16_t live_state[OA_AN_DEVICES_NUM];
+  uint16_t alert_state[OA_AN_DEVICES_NUM];
 
   bool en_adc_diag_rej[OA_AN_DEVICES_NUM];
   bool di_scaled[OA_AN_DEVICES_NUM];
@@ -74,7 +85,7 @@ private:
   /* ---------------------------------------------------------------------
    * SPI communication buffer and functions
    * --------------------------------------------------------------------- */
-  uint8_t com_buffer[BUFF_DIM];
+  uint8_t com_buffer[SPI_COMM_BUFF_DIM];
 
   uint8_t adc_ch_mask_0 = 0;
   uint8_t adc_ch_mask_1 = 0;
@@ -82,11 +93,6 @@ private:
   uint8_t adc_ch_mask_1_last = 0;
 
   bool update_dac_using_LDAC = false;
-
-  /* used to avoid change of function while "adding" adc to
-   * a certain channel */
-  bool write_function_configuration[OA_AN_CHANNELS_NUM] = {
-      true, true, true, true, true, true, true, true};
 
   void setup_channels();
   bool configuration_to_be_updated();
@@ -102,22 +108,6 @@ private:
      Opta Analog uses 2 Analog Devices AD74412R at the same time. So Opta Analog
      channels are 8 from 0 to 7.
 
-     The write_reg and read_reg function have a channel parameter that uses the
-     Opta Analog channel numeration (so from 0 to 7). But they can be used to
-     read and write "single" register by passing the ch parameter the special
-     values:
-     - OA_DUMMY_CHANNEL_DEVICE_0 -> for register on AD74412R device 0
-     - OA_DUMMY_CHANNEL_DEVICE_1 -> for register on AD74412R device 1
-     Moreover these functions in case of "channel" registers use as first
-     parameter
-     ('addr') the "base" address of the set of 4 consecutive addresses used for
-     the 4 channels and the displacement is automatically calculated by the
-     function.
-
-     The read_direct_reg and write_direct_reg instead read and write directly a
-     certain register from a certain device (0 or 1) at a certain address (no
-     automatic displacement calculation is performed)
-
      Pay attention to the fact that the mapping of the Opta Analog channels
      (from 0 to 7) is the following:
      - ch 0 -> device 0 register channel (the displacement) 1 of AD74412R
@@ -128,22 +118,22 @@ private:
      - ch 5 -> device 1 register channel (the displacement) 3 of AD74412R
      - ch 6 -> device 0 register channel (the displacement) 2 of AD74412R
      - ch 7 -> device 0 register channel (the displacement) 3 of AD74412R
+     */
 
-      Other function defined here below are helpers to correctly map the address
-      - get_add_offset takes the Opta Analog channel and returns the
-     displacement
-      - get_device takes the Opta Analog channel and returns the device index (0
-     or 1)
-      - get_dummy_channel takes the Opta Analog channel and return the "dummy"
-     channel code to be passed to write_reg and read_reg (i.e. it returns the
-     device dummy code the Opta channel belongs to)
+  /* use write_reg()/read_reg() to write/read "channels register" (see above) 
+     - addr is the "base" address defined in 'register map' section in OptaAnalogCfg.h
+       file
+     - and channel is a value between 0 and 8
+     So these functions re-map Opta Analog channels to the analog devices (2) 
+     Pay attention that these function internally use read_direct_reg/write_direct_reg
      */
 
   void write_reg(uint8_t addr, uint16_t value, uint8_t ch);
   bool read_reg(uint8_t add, uint16_t &value, uint8_t ch);
   uint8_t get_add_offset(uint8_t ch);
-  uint8_t get_device(uint8_t ch);
-  uint8_t get_dummy_channel(uint8_t ch);
+  
+  /* use these function to read/write "single register" (see above) */
+
   bool read_direct_reg(uint8_t device, uint8_t addr, uint16_t &value);
   void write_direct_reg(uint8_t device, uint8_t addr, uint16_t value);
 
@@ -161,8 +151,7 @@ private:
   bool is_adc_updatable(uint8_t device, bool wait_for_conversion);
   bool adc_enable_channel(uint8_t ch, uint16_t &reg);
 
-  bool is_adc_busy(uint8_t ch);
-  bool is_adc_conversion_finished(uint8_t ch);
+
 
   /* SPI Sending and receiving messages functions */
 
@@ -186,11 +175,19 @@ private:
   bool parse_get_rtd_value();
   bool parse_set_rtd_update_rate();
   bool parse_set_led();
+  bool parse_get_channel_func();
 
   void toggle_ldac();
 
   void reset_dac_value(uint8_t ch);
 
+  FspTimer timer;
+  void set_up_timer();
+  volatile unsigned int timer_call_num = 0;
+  unsigned int timer_timout_ms = OPTA_ANALOG_WATCHTDOG_TIME_ms;
+  static void timer_callback(timer_callback_args_t *arg);
+  bool use_default_output_values = false;
+  void write_dac_defaults(uint8_t ch);
 public:
   OptaAnalog();
   void begin() override;
@@ -226,7 +223,7 @@ public:
   /* ################################################################### */
   /* CONFIGURE CHANNEL FUNCTIONs                                         */
   /* ################################################################### */
-  void configureFunction(uint8_t ch, CfgFun_t f);
+  void configureFunction(uint8_t ch, CfgFun_t f, bool write = true);
   void sendFunction(uint8_t ch, CfgFun_t f);
   CfgFun_t getFunction(uint8_t ch);
 
@@ -297,8 +294,7 @@ public:
   void configureGpo(uint8_t ch, CfgGpo_t f, GpoState_t state);
   void updateGpo(uint8_t ch);
   void digitalWriteAnalog(uint8_t ch, GpoState_t s);
-  void digitalParallelWrite(GpoState_t a, GpoState_t b, GpoState_t c,
-                            GpoState_t d);
+
 
   /* ##################################################################### */
   /*                         DAC FUNCTIONs                                 */
@@ -360,6 +356,7 @@ public:
   /* update PWM, if is not active the Pwm is automatically
    * started */
   void updatePwm(uint8_t ch);
+  void updatePwmWithDefault(uint8_t ch);
   /* suspend the PWM */
   void suspendPwm(uint8_t ch);
 
@@ -383,6 +380,13 @@ public:
   void set_led_off(uint8_t l) { led_status &= ~(1 << l); }
   void debug_with_leds();
 #endif
+
+  void _incrementTimerCallNum() { timer_call_num++; }
+  void _resetTimerCallNum() { timer_call_num = 0; }
+  bool _timeIsNotForever() { return (timer_timout_ms < 0xFFFF); }
+  bool _timerElapsed() { return (timer_call_num >= timer_timout_ms); }
+  unsigned int _timerCallNum() { return timer_call_num; }
+  void _resetOutputs(bool flag);
 };
 #endif
 #endif

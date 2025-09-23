@@ -84,8 +84,8 @@ void setup() {
   // this feature for all nodes (TX & RX) to use ACK payloads.
   radio.enableAckPayload();
 
-  // set the TX address of the RX node into the TX pipe
-  radio.openWritingPipe(address[radioNumber]);  // always uses pipe 0
+  // set the TX address of the RX node for use on the TX pipe (pipe 0)
+  radio.stopListening(address[radioNumber]);  // put radio in TX mode
 
   // set the RX address of the TX node into a RX pipe
   radio.openReadingPipe(1, address[!radioNumber]);  // using pipe 1
@@ -93,9 +93,7 @@ void setup() {
   // additional setup specific to the node's role
   if (role) {
     // setup the TX payload
-
     memcpy(payload.message, "Hello ", 6);  // set the payload message
-    radio.stopListening();                 // put radio in TX mode
   } else {
     // setup the ACK payload & load the first response into the FIFO
 
@@ -132,7 +130,7 @@ void loop() {
       if (radio.available(&pipe)) {  // is there an ACK payload? grab the pipe number that received it
         PayloadStruct received;
         radio.read(&received, sizeof(received));  // get incoming ACK payload
-        Serial.print(F(" Recieved "));
+        Serial.print(F(" Received "));
         Serial.print(radio.getDynamicPayloadSize());  // print incoming payload size
         Serial.print(F(" bytes on pipe "));
         Serial.print(pipe);  // print pipe number that received the ACK
@@ -144,7 +142,7 @@ void loop() {
         payload.counter = received.counter + 1;
 
       } else {
-        Serial.println(F(" Recieved: an empty ACK packet"));  // empty ACK packet received
+        Serial.println(F(" Received: an empty ACK packet"));  // empty ACK packet received
       }
 
 
@@ -159,7 +157,7 @@ void loop() {
     // This device is a RX node
 
     uint8_t pipe;
-    if (radio.available(&pipe)) {                     // is there a payload? get the pipe number that recieved it
+    if (radio.available(&pipe)) {                     // is there a payload? get the pipe number that received it
       uint8_t bytes = radio.getDynamicPayloadSize();  // get the size of the payload
       PayloadStruct received;
       radio.read(&received, sizeof(received));  // get incoming payload

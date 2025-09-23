@@ -103,8 +103,8 @@ int main(int argc, char** argv)
     // number of bytes we need to transmit a float
     radio.setPayloadSize(sizeof(payload)); // char[7] & uint8_t datatypes occupy 8 bytes
 
-    // set the TX address of the RX node into the TX pipe
-    radio.openWritingPipe(address[radioNumber]); // always uses pipe 0
+    // set the TX address of the RX node for use on the TX pipe (pipe 0)
+    radio.stopListening(address[radioNumber]);
 
     // set the RX address of the TX node into a RX pipe
     radio.openReadingPipe(1, address[!radioNumber]); // using pipe 1
@@ -181,7 +181,7 @@ void master()
                 cout << (unsigned int)payload.counter;    // print outgoing counter
                 PayloadStruct received;
                 radio.read(&received, sizeof(received));     // get incoming payload
-                cout << " Recieved " << (unsigned int)bytes; // print incoming payload size
+                cout << " Received " << (unsigned int)bytes; // print incoming payload size
                 cout << " on pipe " << (unsigned int)pipe;   // print RX pipe number
                 cout << ": " << received.message;            // print the incoming message
                 cout << (unsigned int)received.counter;      // print the incoming counter
@@ -189,7 +189,7 @@ void master()
                 payload.counter = received.counter; // save incoming counter for next outgoing counter
             }
             else {
-                cout << "Recieved no response." << endl; // no response received
+                cout << "Received no response." << endl; // no response received
             }
         }
         else {
@@ -216,7 +216,7 @@ void slave()
     time_t startTimer = time(nullptr);       // start a timer
     while (time(nullptr) - startTimer < 6) { // use 6 second timeout
         uint8_t pipe;
-        if (radio.available(&pipe)) {               // is there a payload? get the pipe number that recieved it
+        if (radio.available(&pipe)) {               // is there a payload? get the pipe number that received it
             uint8_t bytes = radio.getPayloadSize(); // get size of incoming payload
             PayloadStruct received;
             radio.read(&received, sizeof(received)); // get incoming payload

@@ -87,8 +87,8 @@ int main(int argc, char** argv)
     // each other.
     radio.setPALevel(RF24_PA_LOW); // RF24_PA_MAX is default.
 
-    // set the TX address of the RX node into the TX pipe
-    radio.openWritingPipe(address[radioNumber]); // always uses pipe 0
+    // set the TX address of the RX node for use on the TX pipe (pipe 0)
+    radio.stopListening(address[radioNumber]);
 
     // set the RX address of the TX node into a RX pipe
     radio.openReadingPipe(1, address[!radioNumber]); // using pipe 1
@@ -171,7 +171,7 @@ void slave()
     time_t startTimer = time(nullptr);       // start a timer
     while (time(nullptr) - startTimer < 6) { // use 6 second timeout
         uint8_t pipe;
-        if (radio.available(&pipe)) {                        // is there a payload? get the pipe number that recieved it
+        if (radio.available(&pipe)) {                        // is there a payload? get the pipe number that received it
             uint8_t bytes = radio.getPayloadSize();          // get the size of the payload
             radio.read(&payload, bytes);                     // fetch payload from FIFO
             cout << "Received " << (unsigned int)bytes;      // print the size of the payload

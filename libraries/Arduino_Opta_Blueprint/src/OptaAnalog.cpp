@@ -14,6 +14,9 @@
 #include "AnalogCommonCfg.h"
 #include <cstdint>
 #include <stdint.h>
+
+#define GET_DEVICE_FROM_CHANNEL(ch)   ((ch >= 2 && ch <= 5) ? OA_AN_DEVICE_1 : OA_AN_DEVICE_0)
+
 #ifndef ARDUINO_OPTA
 
 #if defined ARDUINO_OPTA_ANALOG || defined ARDUINO_UNO_TESTALOG_SHIELD
@@ -120,32 +123,56 @@ void OptaAnalog::configurePwmPulse(uint8_t ch, uint32_t _pulse_us) {
 
 /* -------------------------------------------------------------------------- */
 void OptaAnalog::updatePwm(uint8_t ch) {
-  /* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ */
+  
   if (ch >= OA_PWM_CHANNELS_NUM) {
     return;
   }
-  if (pwm[ch].set_period_us == 0 && pwm[ch].active) {
+  
+  if (pwm[ch].set_period_us == 0) {
     pwm[ch].pwm.suspend();
-    pwm[ch].active = false;
-  } else {
-    if (pwm[ch].set_pulse_us < pwm[ch].set_period_us) {
-      if (pwm[ch].set_period_us != pwm[ch].period_us) {
-        pwm[ch].pwm.period_us(pwm[ch].set_period_us);
-      }
-      if (pwm[ch].set_pulse_us != pwm[ch].pulse_us) {
-        pwm[ch].pwm.pulseWidth_us(pwm[ch].set_pulse_us);
-      }
-      pwm[ch].period_us = pwm[ch].set_period_us;
-      pwm[ch].pulse_us = pwm[ch].set_pulse_us;
-      if (!pwm[ch].active) {
-#ifdef ARDUINO_OPTA_ANALOG
+  } 
+  else {
+    if (pwm[ch].set_pulse_us <= pwm[ch].set_period_us) {
+      if (pwm[ch].set_period_us != pwm[ch].period_us || pwm[ch].set_pulse_us != pwm[ch].pulse_us) {
         pwm[ch].pwm.resume();
-        pwm[ch].active = true;
-#endif
+        pwm[ch].pwm.period_us(pwm[ch].set_period_us);
+        pwm[ch].pwm.pulseWidth_us(pwm[ch].set_pulse_us);      
       }
     }
   }
+  pwm[ch].period_us = pwm[ch].set_period_us;
+  pwm[ch].pulse_us = pwm[ch].set_pulse_us;
 }
+
+/* -------------------------------------------------------------------------- */
+void OptaAnalog::updatePwmWithDefault(uint8_t ch) {
+/* ------------------------------------------------------------------------ */
+  
+  if (ch >= OA_PWM_CHANNELS_NUM) {
+    return;
+  }
+
+  /* only if PWM is used */
+  
+  if(pwm_period_defaults[ch] == 0) {
+    pwm[ch].pwm.suspend();
+  } 
+  else {
+    if (pwm_pulse_defaults[ch] <= pwm_period_defaults[ch]) {
+      if (pwm_period_defaults[ch] != pwm[ch].period_us || pwm_pulse_defaults[ch] != pwm[ch].pulse_us) {
+        pwm[ch].pwm.resume();
+        pwm[ch].pwm.period_us(pwm_period_defaults[ch]);
+        pwm[ch].pwm.pulseWidth_us(pwm_pulse_defaults[ch]);      
+      }
+    }
+  }
+  
+  pwm[ch].period_us = pwm_period_defaults[ch];
+  pwm[ch].pulse_us = pwm_pulse_defaults[ch];
+}
+
+
 /* -------------------------------------------------------------------------- */
 void OptaAnalog::suspendPwm(uint8_t ch) {
   /* ------------------------------------------------------------------------ */
@@ -153,10 +180,12 @@ void OptaAnalog::suspendPwm(uint8_t ch) {
     return;
   }
 
-  if (pwm[ch].active) {
-    pwm[ch].pwm.suspend();
-    pwm[ch].active = false;
-  }
+  pwm[ch].pwm.suspend();
+  pwm[ch].period_us = 0;
+  pwm[ch].pulse_us = 0;
+  pwm[ch].set_period_us = 0;
+  pwm[ch].set_pulse_us = 0;
+
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
@@ -195,9 +224,18 @@ OptaAnalog::OptaAnalog()
     fun[i] = CH_FUNC_HIGH_IMPEDENCE;
     dac_value_updated[i] = true;
     dac_values[i] = 0;
+    dac_defaults[i] = 0;
   }
+
+  for (int i = 0; i < OA_PWM_CHANNELS_NUM; i++) {
+    pwm_period_defaults[i] = 0;
+    pwm_pulse_defaults[i] = 0;
+
+  }
+  
   /* ------------------------------------------------------------------------ */
 }
+
 
 /* BEGIN */
 /* -------------------------------------------------------------------------- */
@@ -210,7 +248,7 @@ void OptaAnalog::begin() {
   digitalWrite(DIO_RESET_1,HIGH);
   digitalWrite(DIO_RESET_2,HIGH);
 
-
+  set_up_timer();
 
   Module::begin();
   SPI.begin();
@@ -308,15 +346,28 @@ void OptaAnalog::update() {
 
   // MEMO: always first update DAC and then rtd
   // This ensure synchronization
-  for (int i = 0; i < OA_AN_CHANNELS_NUM; i++) {
-    updateDac(i);
-    updateDacValue(i, false);
-  }
-  Module::update();
-  if (update_dac_using_LDAC && are_all_dac_updated()) {
-    update_dac_using_LDAC = false;
-    
+  if(use_default_output_values) {
+    for(int i = 0; i < OA_AN_CHANNELS_NUM; i++) {
+      if(is_dac_used(i)) {
+        write_dac_defaults(i); 
+      }
+    }
+    /* when use_default_output_values becomes false (because a message has been
+       received) this ensure the DAC outputs are re-updated to the last values */
+    update_dac_using_LDAC = true;
     toggle_ldac();
+  }
+  else {
+    for (int i = 0; i < OA_AN_CHANNELS_NUM; i++) {
+      updateDac(i);
+      updateDacValue(i, false);
+    }
+    Module::update();
+    if (update_dac_using_LDAC && are_all_dac_updated()) {
+      update_dac_using_LDAC = false;
+      
+      toggle_ldac();
+    }
   }
   Module::update();
 
@@ -327,8 +378,15 @@ void OptaAnalog::update() {
   }
   Module::update();
 
-  for (int i = 0; i < OA_PWM_CHANNELS_NUM; i++) {
-    updatePwm(i);
+  if(use_default_output_values) {
+    for(int i = 0; i < OA_PWM_CHANNELS_NUM; i++) {
+      updatePwmWithDefault(i);
+    }
+  }
+  else {
+    for (int i = 0; i < OA_PWM_CHANNELS_NUM; i++) {
+      updatePwm(i);
+    }
   }
   Module::update();
 
@@ -395,37 +453,9 @@ uint8_t OptaAnalog::get_add_offset(uint8_t ch) {
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
-uint8_t OptaAnalog::get_dummy_channel(uint8_t ch) {
-  if (ch == 0 || ch == 1 || ch == 6 || ch == 7) {
-    /* those channels belongs to device 0 */
-    return OA_DUMMY_CHANNEL_DEVICE_0;
-  } else if (ch == 2 || ch == 3 || ch == 4 || ch == 5) {
-    return OA_DUMMY_CHANNEL_DEVICE_1;
-  }
-  return ch;
-}
-
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
-uint8_t OptaAnalog::get_device(uint8_t ch) {
-  if (ch == OA_DUMMY_CHANNEL_DEVICE_0) {
-    return 0;
-  } else if (ch == OA_DUMMY_CHANNEL_DEVICE_1) {
-    return 1;
-  } else if (ch == 0 || ch == 1 || ch == 6 || ch == 7) {
-    /* those channels belongs to device 0 */
-    return 0;
-  } else {
-    return 1;
-  }
-}
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
 void OptaAnalog::write_reg(uint8_t addr, uint16_t value, uint8_t ch) {
   uint8_t ad = addr + get_add_offset(ch);
-  uint8_t device = get_device(ch);
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
   write_direct_reg(device, ad, value);
 }
 
@@ -439,7 +469,7 @@ bool OptaAnalog::read_reg(uint8_t addr, uint16_t &value, uint8_t ch) {
    * alert flags, and the four digital input outputs are returned
    * in Bits[30:24] of any subsequent SPI read. */
   uint8_t ad = addr + get_add_offset(ch);
-  uint8_t device = get_device(ch);
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
   return read_direct_reg(device, ad, value);
 }
 
@@ -474,12 +504,12 @@ void OptaAnalog::write_direct_reg(uint8_t device, uint8_t addr,
   delay(1);
 #endif
   SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE1));
-  SPI.transfer(com_buffer, 4);
+  SPI.transfer(com_buffer, SPI_COMM_BUFF_DIM);
   SPI.endTransaction();
 
 #if defined DEBUG_SERIAL && defined DEBUG_SPI_COMM
   Serial.print("RX: ");
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < SPI_COMM_BUFF_DIM; i++) {
     if (com_buffer[i] < 0x10) {
       Serial.print('0');
     }
@@ -503,8 +533,8 @@ void OptaAnalog::write_direct_reg(uint8_t device, uint8_t addr,
 
 bool OptaAnalog::read_direct_reg(uint8_t device, uint8_t addr,
                                  uint16_t &value) {
-  write_direct_reg(device, OPTA_AN_READ_SELECT, (addr | 0x100));
-  write_direct_reg(device, OPTA_AN_NOP, OPTA_AN_NOP);
+  write_direct_reg(device, OA_REG_READ_SELECT___SINGLE_PER_DEVICE, (addr | 0x100));
+  write_direct_reg(device, OPTA_AN_NOP___SINGLE_PER_DEVICE, 0x00);
   if (OptaCrc8::verify(com_buffer[3], com_buffer, 3)) {
     value = com_buffer[2] | ((uint16_t)com_buffer[1] << 8);
     return true;
@@ -517,9 +547,12 @@ bool OptaAnalog::read_direct_reg(uint8_t device, uint8_t addr,
 
 // this function "reset" channels in case they are used for DAC or
 // resistance measurement
-void OptaAnalog::configureFunction(uint8_t ch, CfgFun_t f) {
+void OptaAnalog::configureFunction(uint8_t ch, CfgFun_t f, bool write) {
   if (ch < OA_AN_CHANNELS_NUM) {
-    update_fun[ch] = f;
+    ChConfig cfg;
+    cfg.write = write;
+    cfg.f = f;
+    update_fun[ch].push(cfg);
   }
 }
 
@@ -624,7 +657,8 @@ void OptaAnalog::configureAdcDiagnostic(uint8_t ch, bool en) {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 void OptaAnalog::configureAdcDiagRejection(uint8_t ch, bool en) {
-  en_adc_diag_rej[ch] = en;
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
+  en_adc_diag_rej[device] = en;
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -715,7 +749,7 @@ void OptaAnalog::sendAdcConfiguration(uint8_t ch) {
 /* -------------------------------------------------------- */
 bool OptaAnalog::is_adc_started(uint8_t device) {
   uint16_t r = 0;
-  read_direct_reg(device, OA_ADC_CONV_CTRL, r);
+  read_direct_reg(device, OA_REG_ADC_CONV_CTRL___SINGLE_PER_DEVICE, r);
   uint16_t v = (r & (3 << 8)) >> 8;
   if (v == 1 || v == 2) {
     return true;
@@ -736,8 +770,8 @@ void OptaAnalog::stop_adc(uint8_t device, bool power_down) {
   uint16_t r = 0;
   if (is_adc_started(device)) {
     do {
-      write_direct_reg(device, OPTA_AN_ADC_CONV_CTRL, stop_value);
-      read_direct_reg(device, OA_LIVE_STATUS, r);
+      write_direct_reg(device, OA_REG_ADC_CONV_CTRL___SINGLE_PER_DEVICE, stop_value);
+      read_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, r);
     } while (r & ADC_BUSY_MASK);
   }
 }
@@ -784,11 +818,11 @@ void OptaAnalog::start_adc(uint8_t device, bool single_acquisition) {
 
     uint16_t r = 0;
 
-    write_direct_reg(device, OA_LIVE_STATUS, ADC_DATA_READY);
+    write_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, ADC_DATA_READY);
 
     do {
-      write_direct_reg(device, OA_ADC_CONV_CTRL, reg_cfg);
-      read_direct_reg(device, OA_LIVE_STATUS, r);
+      write_direct_reg(device, OA_REG_ADC_CONV_CTRL___SINGLE_PER_DEVICE, reg_cfg);
+      read_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, r);
     } while ((r & ADC_BUSY_MASK) == 0);
   }
 }
@@ -852,15 +886,15 @@ bool OptaAnalog::is_adc_updatable(uint8_t device, bool wait_for_conversion) {
       /* if wait_for_conversion is true, then the function is blocking
        * and wait until the ADC has finished the conversion */
       do {
-        read_direct_reg(device, OA_LIVE_STATUS, r);
+        read_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, r);
         delay(1);
       } while ((r & ADC_DATA_READY) == 0);
       rv = true;
     } else {
-      read_direct_reg(device, OA_LIVE_STATUS, r);
+      read_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, r);
       if (r & ADC_DATA_READY) {
         rv = true;
-        write_direct_reg(device, OA_LIVE_STATUS, ADC_DATA_READY);
+        write_direct_reg(device, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, ADC_DATA_READY);
       }
     }
   }
@@ -874,7 +908,7 @@ void OptaAnalog::updateAdc(bool wait_for_conversion /*= false*/) {
     update_adc_value(OA_CH_1);
     update_adc_value(OA_CH_6);
     update_adc_value(OA_CH_7);
-    write_reg(OA_LIVE_STATUS, ADC_DATA_READY, OA_DUMMY_CHANNEL_DEVICE_0);
+    write_direct_reg(OA_AN_DEVICE_0, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, ADC_DATA_READY);
   }
 
 #ifdef ARDUINO_OPTA_ANALOG
@@ -883,7 +917,7 @@ void OptaAnalog::updateAdc(bool wait_for_conversion /*= false*/) {
     update_adc_value(OA_CH_3);
     update_adc_value(OA_CH_4);
     update_adc_value(OA_CH_5);
-    write_reg(OA_LIVE_STATUS, ADC_DATA_READY, OA_DUMMY_CHANNEL_DEVICE_1);
+    write_direct_reg(OA_AN_DEVICE_1, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, ADC_DATA_READY);
   }
 
 #endif
@@ -1350,8 +1384,21 @@ void OptaAnalog::reset_dac_value(uint8_t ch) {
       write_reg(OA_REG_DAC_CODE, 0, ch);
       read_reg(OA_REG_DAC_CODE, set_value, ch);
     }
-    
     toggle_ldac();
+  }
+}
+
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+void OptaAnalog::write_dac_defaults(uint8_t ch) {
+  if (ch < OA_AN_CHANNELS_NUM) {
+    write_reg(OA_REG_DAC_CODE, dac_defaults[ch], ch);
+    uint16_t set_value = 0;
+    read_reg(OA_REG_DAC_CODE, set_value, ch);
+    while(set_value != dac_defaults[ch]) {
+      write_reg(OA_REG_DAC_CODE, dac_defaults[ch], ch);
+      read_reg(OA_REG_DAC_CODE, set_value, ch);
+    }
   }
 }
 
@@ -1388,6 +1435,12 @@ void OptaAnalog::resetDacValue(uint8_t ch) {
 
 bool OptaAnalog::is_dac_used(uint8_t ch) {
   if (ch < OA_AN_CHANNELS_NUM) {
+    if(rtd[ch].is_rtd == true) {
+      /* RTD 3 wires uses CURRENT OUTPUT but is not a DAC function 
+         this has to deal with default values */
+      return false;
+    }
+
     return (fun[ch] == CH_FUNC_VOLTAGE_OUTPUT ||
             fun[ch] == CH_FUNC_CURRENT_OUTPUT);
   }
@@ -1458,8 +1511,8 @@ void OptaAnalog::configureDinDebounceSimple(uint8_t ch, bool en) {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 void OptaAnalog::configureDinScaleComp(uint8_t ch, bool en) {
-  uint8_t d = get_device(ch);
-  di_scaled[d] = en;
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
+  di_scaled[device] = en;
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -1468,8 +1521,8 @@ void OptaAnalog::configureDinCompTh(uint8_t ch, uint8_t v) {
   if (v >= 32) { // only 5 bits available
     v = 31;
   }
-  uint8_t d = get_device(ch);
-  di_th[d] = v;
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
+  di_th[device] = v;
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -1523,14 +1576,15 @@ void OptaAnalog::sendDinConfiguration(uint8_t ch) {
 
     reg_cfg = 0;
 
-    uint8_t d = get_device(ch);
-    if (!di_scaled[d]) {
+    uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
+
+    if (!di_scaled[device]) {
       reg_cfg = TH_FIXED_TO_16V;
     }
 
-    COMPARATOR_TH(reg_cfg, di_th[d]);
+    COMPARATOR_TH(reg_cfg, di_th[device]);
 
-    write_reg(OA_REG_DIN_THRESH, reg_cfg, get_dummy_channel(ch));
+    write_direct_reg(device, OA_REG_DIN_THRESH___SINGLE_PER_DEVICE, reg_cfg);
   }
 }
 
@@ -1543,7 +1597,7 @@ void OptaAnalog::updateDinReadings() {
    * this trick to use get_device function on channel 0
    */
 
-  read_reg(OA_REG_DIN_COMP_OUT, read_value, OA_DUMMY_CHANNEL_DEVICE_0);
+  read_direct_reg(OA_AN_DEVICE_0, OA_REG_DIN_COMP_OUT___SINGLE_PER_DEVICE, read_value);
 #ifdef ARDUINO_UNO_TESTALOG_SHIELD
   digital_ins |= (read_value & 0x0F);
 #else
@@ -1555,7 +1609,7 @@ void OptaAnalog::updateDinReadings() {
    * use this trick to use get_device function on
    * channel 2 */
 
-  read_reg(OA_REG_DIN_COMP_OUT, read_value, OA_DUMMY_CHANNEL_DEVICE_1);
+  read_direct_reg(OA_AN_DEVICE_1, OA_REG_DIN_COMP_OUT___SINGLE_PER_DEVICE, read_value);
   digital_ins |= (read_value & 0xF) << 2;
 }
 
@@ -1639,31 +1693,7 @@ void OptaAnalog::digitalWriteAnalog(uint8_t ch, GpoState_t s) {
 #endif
 }
 
-void OptaAnalog::digitalParallelWrite(GpoState_t a, GpoState_t b, GpoState_t c,
-                                      GpoState_t d) {
-#ifndef ARDUINO_OPTA_ANALOG
-  uint16_t cfg = 0;
-  if (a == GPO_HIGH) {
-    PARALLEL_HIGH_CH_A(cfg);
-  }
-  if (b == GPO_HIGH) {
-    PARALLEL_HIGH_CH_B(cfg);
-  }
-  if (c == GPO_HIGH) {
-    PARALLEL_HIGH_CH_C(cfg);
-  }
-  if (d == GPO_HIGH) {
-    PARALLEL_HIGH_CH_D(cfg);
-  }
-  write_reg(OPTA_AN_GPO_PARALLEL, cfg,
-            -1); // TODO check if -1 is correct
-#else
-  (void)a;
-  (void)b;
-  (void)c;
-  (void)d;
-#endif
-}
+
 
 void OptaAnalog::swAnalogDevReset() {
 #ifdef ARDUINO_OPTA_ANALOG
@@ -1679,18 +1709,11 @@ void OptaAnalog::swAnalogDevReset() {
   adc_ch_mask_1 = 0;
   adc_ch_mask_0_last = 0;
   adc_ch_mask_1_last = 0;
-
-  // write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_1);
-  // write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_2);
-  // write_direct_reg(1, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_1);
-  // write_direct_reg(1, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_2);
 #else
   digitalWrite(DIO_RESET_1, LOW);
   delay(50);
   digitalWrite(DIO_RESET_1, HIGH);
   delay(100);
-  // write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_1);
-  // write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_RESET_2);
 #endif
   for (int i = 0; i < OA_AN_CHANNELS_NUM; i++) {
     fun[i] = CH_FUNC_HIGH_IMPEDENCE;
@@ -1702,76 +1725,20 @@ void OptaAnalog::swAnalogDevReset() {
 
 void OptaAnalog::sychLDAC() {
 #ifdef ARDUINO_OPTA_ANALOG
-  write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_LDAC);
-  write_direct_reg(1, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_LDAC);
+  write_direct_reg(OA_AN_DEVICE_0, OA_REG_CMD_REGISTER___SINGLE_PER_DEVICE, OPTA_AN_KEY_LDAC);
+  write_direct_reg(OA_AN_DEVICE_1, OA_REG_CMD_REGISTER___SINGLE_PER_DEVICE, OPTA_AN_KEY_LDAC);
 #else
-  write_direct_reg(0, OPTA_AN_CMD_REGISTER, OPTA_AN_KEY_LDAC);
+  write_direct_reg(OA_AN_DEVICE_0, OA_REG_CMD_REGISTER___SINGLE_PER_DEVICE, OPTA_AN_KEY_LDAC);
 #endif
 }
 
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
-bool OptaAnalog::is_adc_busy(uint8_t ch) {
-  update_live_status(ch);
-  if (ch == OA_DUMMY_CHANNEL_DEVICE_0) {
-    return (bool)((state[OA_AN_DEVICE_0] & ADC_BUSY_MASK));
-  } else if (ch == OA_DUMMY_CHANNEL_DEVICE_0) {
-    return (bool)((state[OA_AN_DEVICE_1] & ADC_BUSY_MASK));
-  }
-  return false;
-}
-
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
-void OptaAnalog::update_live_status(uint8_t ch) {
-  if (ch == OA_DUMMY_CHANNEL_DEVICE_0) {
-    read_reg(OA_LIVE_STATUS, state[OA_AN_DEVICE_0], ch);
-  } else if (ch == OA_DUMMY_CHANNEL_DEVICE_1) {
-    read_reg(OA_LIVE_STATUS, state[OA_AN_DEVICE_1], ch);
-  }
-}
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 void OptaAnalog::update_live_status() {
-  update_live_status(OA_DUMMY_CHANNEL_DEVICE_0);
-#ifndef ARDUINO_UNO_TESTALOG_SHIELD
-  update_live_status(OA_DUMMY_CHANNEL_DEVICE_1);
-#endif
+  read_direct_reg(OA_AN_DEVICE_0, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, live_state[OA_AN_DEVICE_0]);
+  read_direct_reg(OA_AN_DEVICE_1, OA_REG_LIVE_STATUS___SINGLE_PER_DEVICE, live_state[OA_AN_DEVICE_1]);
 }
-
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-
-/* the live status register contains:
- * - bit 14 -> adc data ready
- * - bit 13 -> adc busy
- * - bit 10..12 -> channel being converted
- * This register is 1 for each device
- * The purpose of this function is to verify if the adc conversion is finished
- * for THAT channel (ch) */
-bool OptaAnalog::is_adc_conversion_finished(uint8_t ch) {
-  update_live_status(get_dummy_channel(ch));
-  // depending on the channel the device is different
-  // and we select the device in this way (see
-  // get_device function)
-  uint8_t _ch = get_device(ch);
-  // there is a state for each device
-  if (state[_ch] & ADC_DATA_READY) {
-    // here we get the channel being converted from the
-    // live status register
-    uint16_t ch_used = (state[_ch] & ADC_DATA_READY);
-    ch_used = ch_used >> 10;
-    // but we need to to convert "our" channel (from 0
-    // to 7) to "device" channel (from 0 to 3)
-    if (get_add_offset(ch) == ch_used) {
-      write_reg(OA_LIVE_STATUS, ADC_DATA_READY, get_dummy_channel(ch));
-      return true;
-    }
-  }
-  return false;
-}
-
-/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
@@ -1783,10 +1750,8 @@ void OptaAnalog::update_alert_mask(int8_t ch) {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 void OptaAnalog::update_alert_status() {
-  read_reg(OA_ALERT_STATUS, state[OA_AN_DEVICE_0], OA_DUMMY_CHANNEL_DEVICE_0);
-#ifndef ARDUINO_UNO_TESTALOG_SHIELD
-  read_reg(OA_ALERT_STATUS, state[OA_AN_DEVICE_1], OA_DUMMY_CHANNEL_DEVICE_1);
-#endif
+  read_direct_reg(OA_AN_DEVICE_0, OA_REG_ALERT_STATUS___SINGLE_PER_DEVICE, alert_state[OA_AN_DEVICE_0]);
+  read_direct_reg(OA_AN_DEVICE_1, OA_REG_ALERT_STATUS___SINGLE_PER_DEVICE, alert_state[OA_AN_DEVICE_1]);
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -1802,10 +1767,13 @@ void OptaAnalog::configureAlertMaskRegister(uint8_t device, uint16_t alert) {
 /* ####################################################################### */
 
 bool OptaAnalog::parse_setup_di_channel() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_DI, LEN_OA_CH_DI,
-                          OA_CH_DI_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_DI, LEN_OA_CH_DI)) {
     uint8_t ch = rx_buffer[OA_CH_DI_CHANNEL_POS];
-    write_function_configuration[ch] = true;
+    
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
+
     if (ch < OA_AN_CHANNELS_NUM) {
       rtd[ch].is_rtd = false;
     }
@@ -1832,16 +1800,16 @@ bool OptaAnalog::parse_setup_di_channel() {
       configureDinDebounceSimple(ch, false);
     }
     if (rx_buffer[OA_CH_DI_SCALE_COMP_POS] == OA_ENABLE) {
-      configureDinScaleComp(get_dummy_channel(ch), true);
+      configureDinScaleComp(ch, true);
     } else {
-      configureDinScaleComp(get_dummy_channel(ch), false);
+      configureDinScaleComp(ch, false);
     }
-    configureDinCompTh(get_dummy_channel(ch), rx_buffer[OA_CH_DI_COMP_TH_POS]);
+    configureDinCompTh(ch, rx_buffer[OA_CH_DI_COMP_TH_POS]);
 
     configureDinCurrentSink(ch, rx_buffer[OA_CH_DI_CURR_SINK_POS]);
     configureDinDebounceTime(ch, rx_buffer[OA_CH_DI_DEBOUNCE_TIME_POS]);
 
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
 
     return true;
   }
@@ -1851,10 +1819,12 @@ bool OptaAnalog::parse_setup_di_channel() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_setup_dac_channel() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_DAC, LEN_OA_CH_DAC,
-                          OA_CH_DAC_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_DAC, LEN_OA_CH_DAC)) {
     uint8_t ch = rx_buffer[OA_CH_DAC_CHANNEL_POS];
-    write_function_configuration[ch] = true;
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
 
     if (ch < OA_AN_CHANNELS_NUM) {
       rtd[ch].is_rtd = false;
@@ -1926,7 +1896,7 @@ bool OptaAnalog::parse_setup_dac_channel() {
     } else {
       configureDacDisableSlew(ch);
     }
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
     return true;
   }
   return false;
@@ -1935,10 +1905,13 @@ bool OptaAnalog::parse_setup_dac_channel() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_setup_rtd_channel() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_RTD, LEN_OA_CH_RTD,
-                          OA_CH_RTD_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_RTD, LEN_OA_CH_RTD)) {
     uint8_t ch = rx_buffer[OA_CH_RTD_CHANNEL_POS];
-    write_function_configuration[ch] = true;
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
+
     Float_u v;
     for (int i = 0; i < 4; i++) {
       v.bytes[i] = rx_buffer[OA_CH_RTD_CURRENT_POS + i];
@@ -1948,7 +1921,7 @@ bool OptaAnalog::parse_setup_rtd_channel() {
     } else {
       configureRtd(ch, false, v.value);
     }
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
     return true;
   }
   return false;
@@ -1958,11 +1931,15 @@ bool OptaAnalog::parse_setup_rtd_channel() {
 
 bool OptaAnalog::parse_setup_high_imp_channel() {
   if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_HIGH_IMPEDENCE,
-                          LEN_OA_CH_HIGH_IMPEDENCE, OA_CH_HIGH_IMPEDENCE_LEN)) {
+                          LEN_OA_CH_HIGH_IMPEDENCE)) {
     uint8_t ch = rx_buffer[OA_HIGH_IMPEDENCE_CH_POS];
-    write_function_configuration[ch] = true;
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
+    rtd[ch].is_rtd = false;
     configureFunction(ch, CH_FUNC_HIGH_IMPEDENCE);
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
     return true;
   }
   return false;
@@ -1970,21 +1947,32 @@ bool OptaAnalog::parse_setup_high_imp_channel() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_setup_adc_channel() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_ADC, LEN_OA_CH_ADC,
-                          OA_CH_ADC_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_CH_ADC, LEN_OA_CH_ADC)) {
 
     uint8_t ch = rx_buffer[OA_CH_ADC_CHANNEL_POS];
-    write_function_configuration[ch] = true;
+    
+    if (ch >= OA_AN_CHANNELS_NUM) {
+       return true;
+    }
+    bool write = true;
     if (rx_buffer[OA_CH_ADC_ADDING_ADC_POS] == OA_ENABLE) {
-      write_function_configuration[ch] = false;
+      write = false;
     }
 
-    if (ch < OA_AN_CHANNELS_NUM) {
-      rtd[ch].is_rtd = false;
+    rtd[ch].is_rtd = false;
+
+    CfgFun_t tmp_f = CH_FUNC_HIGH_IMPEDENCE;
+
+    if(update_fun[ch].size() > 0) {
+      tmp_f = update_fun[ch].back().f;
     }
 
-    if (fun[ch] == CH_FUNC_VOLTAGE_OUTPUT &&
-        write_function_configuration[ch] == false &&
+    /* cannot wait for the fun[ch] to be updated if the add ADC is done immediately
+     * after the begin DAC because it can take some times to update the channel
+     * configuration. With this change we ensure that the last channel
+     * configuration used is immediately checked */
+    if ( (tmp_f == CH_FUNC_VOLTAGE_OUTPUT || fun[ch] == CH_FUNC_VOLTAGE_OUTPUT) &&
+        write == false &&
         rx_buffer[OA_CH_ADC_TYPE_POS] == OA_CURRENT_ADC) {
       /* this is a special case:
        * we have DAC voltage output on that channel but we are adding an ADC
@@ -1993,12 +1981,12 @@ bool OptaAnalog::parse_setup_adc_channel() {
       /* note that the function here is not really used since it will
       not sent to the Analog Device chip (write_function_configuration[ch]
       is false indeed) */
-      configureFunction(ch, CH_FUNC_CURRENT_INPUT_LOOP_POWER);
+      configureFunction(ch, CH_FUNC_CURRENT_INPUT_LOOP_POWER, write);
       configureAdcMux(ch, CFG_ADC_INPUT_NODE_100OHM_R);
       configureAdcRange(ch, CFG_ADC_RANGE_2_5V_BI);
       configureAdcPullDown(ch, false);
     } else if (rx_buffer[OA_CH_ADC_TYPE_POS] == OA_VOLTAGE_ADC) {
-      configureFunction(ch, CH_FUNC_VOLTAGE_INPUT);
+      configureFunction(ch, CH_FUNC_VOLTAGE_INPUT,write);
       configureAdcMux(ch, CFG_ADC_INPUT_NODE_IOP_AGND_SENSE);
       configureAdcRange(ch, CFG_ADC_RANGE_10V);
       if (rx_buffer[OA_CH_ADC_PULL_DOWN_POS] == OA_ENABLE) {
@@ -2007,7 +1995,7 @@ bool OptaAnalog::parse_setup_adc_channel() {
         configureAdcPullDown(rx_buffer[OA_CH_ADC_CHANNEL_POS], false);
       }
     } else if (rx_buffer[OA_CH_ADC_TYPE_POS] == OA_CURRENT_ADC) {
-      configureFunction(ch, CH_FUNC_CURRENT_INPUT_EXT_POWER);
+      configureFunction(ch, CH_FUNC_CURRENT_INPUT_EXT_POWER, write);
       configureAdcMux(ch, CFG_ADC_INPUT_NODE_100OHM_R);
       configureAdcRange(ch, CFG_ADC_RANGE_2_5V_RTD);
       configureAdcPullDown(ch, false);
@@ -2015,10 +2003,10 @@ bool OptaAnalog::parse_setup_adc_channel() {
 
     if (rx_buffer[OA_CH_ADC_REJECTION_POS] == OA_ENABLE) {
       configureAdcRejection(ch, true);
-      configureAdcDiagRejection(get_dummy_channel(ch), true);
+      configureAdcDiagRejection(ch, true);
     } else if (rx_buffer[OA_CH_ADC_REJECTION_POS] == OA_DISABLE) {
       configureAdcRejection(ch, false);
-      configureAdcDiagRejection(get_dummy_channel(ch), false);
+      configureAdcDiagRejection(ch, false);
     }
     if (rx_buffer[OA_CH_ADC_DIAGNOSTIC_POS] == OA_ENABLE) {
       configureAdcDiagnostic(ch, true);
@@ -2027,7 +2015,7 @@ bool OptaAnalog::parse_setup_adc_channel() {
     }
     configureAdcMovingAverage(ch, rx_buffer[OA_CH_ADC_MOVING_AVE_POS]);
 
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
 
     return true;
   }
@@ -2037,9 +2025,12 @@ bool OptaAnalog::parse_setup_adc_channel() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_get_rtd_value() {
-  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_RTD, LEN_OA_GET_RTD,
-                          OA_GET_RTD_LEN)) {
+  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_RTD, LEN_OA_GET_RTD)) {
     uint8_t ch = rx_buffer[OA_CH_RTD_CHANNEL_POS];
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      ch = 0;
+    }
 
     tx_buffer[ANS_OA_GET_RTD_CHANNEL_POS] = ch;
     if (ch < OA_AN_CHANNELS_NUM) {
@@ -2053,8 +2044,7 @@ bool OptaAnalog::parse_get_rtd_value() {
         tx_buffer[ANS_OA_GET_RTD_VALUE_POS + i] = 0;
       }
     }
-    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_RTD, ANS_LEN_OA_GET_RTD,
-                  ANS_OA_GET_RTD_LEN);
+    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_RTD, ANS_LEN_OA_GET_RTD);
     return true;
   }
   return false;
@@ -2063,25 +2053,39 @@ bool OptaAnalog::parse_get_rtd_value() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_set_rtd_update_rate() {
+  bool rv = false;
+  uint16_t rate = rx_buffer[OA_SET_RTD_UPDATE_TIME_POS];
+  rate += (rx_buffer[OA_SET_RTD_UPDATE_TIME_POS + 1] << 8);
   if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_RTD_UPDATE_TIME,
-                          LEN_OA_SET_RTD_UPDATE_TIME,
-                          OA_SET_RTD_UPDATE_TIME_LEN)) {
-    uint16_t rate = rx_buffer[OA_SET_RTD_UPDATE_TIME_POS];
-    rate += (rx_buffer[OA_SET_RTD_UPDATE_TIME_POS + 1] << 8);
+                          LEN_OA_SET_RTD_UPDATE_TIME)) {
+    
     rtd_update_time = rate;
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
-    return true;
+    rv = true;
   }
-  return false;
+  else if(checkSetMsgReceived(rx_buffer, ARG_OA_SET_TIMEOUT_TIME,
+                          LEN_OA_SET_RTD_UPDATE_TIME)) {
+    
+    timer_timout_ms = rate;
+    rv = true;
+
+  }
+  if(rv) {
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
+  }
+
+  return rv;
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_set_dac_value() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_DAC, LEN_OA_SET_DAC,
-                          OA_SET_DAC_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_DAC, LEN_OA_SET_DAC)) {
 
     uint8_t ch = rx_buffer[OA_SET_DAC_CHANNEL_POS];
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
 
     uint16_t value = rx_buffer[OA_SET_DAC_VALUE_POS];
     value += (rx_buffer[OA_SET_DAC_VALUE_POS + 1] << 8);
@@ -2095,8 +2099,22 @@ bool OptaAnalog::parse_set_dac_value() {
 
     /* value are sent to the analog device during
      * update function */
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
     return true;
+  }
+  else if(checkSetMsgReceived(rx_buffer, ARG_OA_SET_DAC_DEFAULT,LEN_OA_SET_DAC)) {
+    uint8_t ch = rx_buffer[OA_SET_DAC_CHANNEL_POS];
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      return true;
+    }
+
+    uint16_t value = rx_buffer[OA_SET_DAC_VALUE_POS];
+    value += (rx_buffer[OA_SET_DAC_VALUE_POS + 1] << 8);
+    dac_defaults[ch] = value;
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
+    return true;
+
   }
   return false;
 }
@@ -2105,11 +2123,10 @@ bool OptaAnalog::parse_set_dac_value() {
 
 bool OptaAnalog::parse_set_all_dac_value() {
 
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_ALL_DAC, LEN_OA_SET_ALL_DAC,
-                          OA_SET_ALL_DAC_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_ALL_DAC, LEN_OA_SET_ALL_DAC)) {
 
-    update_dac_using_LDAC = false;
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    update_dac_using_LDAC = true;
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
     return true;
   }
   return false;
@@ -2117,9 +2134,13 @@ bool OptaAnalog::parse_set_all_dac_value() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_get_adc_value() {
-  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_ADC, LEN_OA_GET_ADC,
-                          OA_GET_ADC_LEN)) {
+  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_ADC, LEN_OA_GET_ADC)) {
     uint8_t ch = rx_buffer[OA_CH_ADC_CHANNEL_POS];
+
+    if(ch >= OA_AN_CHANNELS_NUM) {
+      ch = 0;
+    }
+
     tx_buffer[ANS_OA_ADC_CHANNEL_POS] = ch;
     if (ch < OA_AN_CHANNELS_NUM) {
       uint16_t value = 0;
@@ -2135,8 +2156,7 @@ bool OptaAnalog::parse_get_adc_value() {
       tx_buffer[ANS_OA_ADC_VALUE_POS] = 0;
       tx_buffer[ANS_OA_ADC_VALUE_POS + 1] = 0;
     }
-    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_ADC, ANS_LEN_OA_GET_ADC,
-                  ANS_OA_GET_ADC_LEN);
+    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_ADC, ANS_LEN_OA_GET_ADC);
     return true;
   }
   return false;
@@ -2144,8 +2164,7 @@ bool OptaAnalog::parse_get_adc_value() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_get_all_adc_value() {
-  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_ALL_ADC, LEN_OA_GET_ALL_ADC,
-                          OA_GET_ADC_ALL_LEN)) {
+  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_ALL_ADC, LEN_OA_GET_ALL_ADC)) {
 
     const int s = ANS_OA_ADC_GET_ALL_VALUE_POS;
     for (int ch = 0; ch < OA_AN_CHANNELS_NUM; ch++) {
@@ -2162,8 +2181,7 @@ bool OptaAnalog::parse_get_all_adc_value() {
       tx_buffer[s + 2 * ch + 1] = (uint8_t)((value & 0xFF00) >> 8);
     }
 
-    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_ALL_ADC, ANS_LEN_OA_GET_ALL_ADC,
-                  ANS_OA_GET_ADC_ALL_LEN);
+    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_ALL_ADC, ANS_LEN_OA_GET_ALL_ADC);
     return true;
   }
   return false;
@@ -2172,37 +2190,48 @@ bool OptaAnalog::parse_get_all_adc_value() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_set_pwm_value() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_PWM, LEN_OA_SET_PWM,
-                          OA_SET_PWM_LEN)) {
-    uint8_t ch = rx_buffer[OA_SET_PWM_CHANNEL_POS];
+  bool rv = false;
+  uint8_t ch = rx_buffer[OA_SET_PWM_CHANNEL_POS];
+  
 
-    uint32_t value = rx_buffer[OA_SET_PWM_PERIOD_POS];
-    value += (rx_buffer[OA_SET_PWM_PERIOD_POS + 1] << 8);
-    value += (rx_buffer[OA_SET_PWM_PERIOD_POS + 2] << 16);
-    value += (rx_buffer[OA_SET_PWM_PERIOD_POS + 3] << 24);
+  uint32_t period = rx_buffer[OA_SET_PWM_PERIOD_POS];
+  period += (rx_buffer[OA_SET_PWM_PERIOD_POS + 1] << 8);
+  period += (rx_buffer[OA_SET_PWM_PERIOD_POS + 2] << 16);
+  period += (rx_buffer[OA_SET_PWM_PERIOD_POS + 3] << 24);
 
-    configurePwmPeriod(ch, value);
+  uint32_t pulse =  rx_buffer[OA_SET_PWM_PULSE_POS];
+  pulse += (rx_buffer[OA_SET_PWM_PULSE_POS + 1] << 8);
+  pulse += (rx_buffer[OA_SET_PWM_PULSE_POS + 2] << 16);
+  pulse += (rx_buffer[OA_SET_PWM_PULSE_POS + 3] << 24);
 
-    value = rx_buffer[OA_SET_PWM_PULSE_POS];
-    value += (rx_buffer[OA_SET_PWM_PULSE_POS + 1] << 8);
-    value += (rx_buffer[OA_SET_PWM_PULSE_POS + 2] << 16);
-    value += (rx_buffer[OA_SET_PWM_PULSE_POS + 3] << 24);
 
-    configurePwmPulse(ch, value);
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_PWM, LEN_OA_SET_PWM)) {
+    if(ch >= OA_PWM_CHANNELS_NUM) { return true; }
+    /* setting present PWM values */
+    configurePwmPeriod(ch, period);
+    configurePwmPulse(ch, pulse);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
+    rv = true;
+  }
+  else if(checkSetMsgReceived(rx_buffer, ARD_OA_SET_DEFAULT_PWM, LEN_OA_SET_PWM)) {
+    if(ch >= OA_PWM_CHANNELS_NUM) { return true; }
+    pwm_period_defaults[ch] = period;
+    pwm_pulse_defaults[ch] = pulse;
     return true;
   }
-  return false;
+
+  if(rv) {
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK);
+  }
+  return rv;
 }
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_get_di_value() {
-  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_DI, LEN_OA_GET_DI,
-                          OA_GET_DI_LEN)) {
+  if (checkGetMsgReceived(rx_buffer, ARG_OA_GET_DI,LEN_OA_GET_DI)) {
     tx_buffer[ANS_OA_GET_DI_VALUE_POS] = digital_ins;
-    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_DI, ANS_LEN_OA_GET_DI,
-                  ANS_OA_GET_DI_LEN);
+    prepareGetAns(tx_buffer, ANS_ARG_OA_GET_DI,ANS_LEN_OA_GET_DI);
     return true;
   }
   return false;
@@ -2211,17 +2240,40 @@ bool OptaAnalog::parse_get_di_value() {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 bool OptaAnalog::parse_set_led() {
-  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_LED, LEN_OA_SET_LED,
-                          OA_SET_LED_LEN)) {
+  if (checkSetMsgReceived(rx_buffer, ARG_OA_SET_LED,LEN_OA_SET_LED)) {
     led_status = rx_buffer[OA_SET_LED_VALUE_POS];
-    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK, ANS_LEN_OA_ACK, ANS_ACK_OA_LEN);
+    prepareSetAns(tx_buffer, ANS_ARG_OA_ACK,ANS_LEN_OA_ACK);
     return true;
   }
   return false;
 }
+
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+bool OptaAnalog::parse_get_channel_func() {
+   if (checkGetMsgReceived(rx_buffer, ARG_GET_CHANNEL_FUNCTION, LEN_GET_CHANNEL_FUNCTION)) {
+    uint8_t ch = rx_buffer[GET_CHANNEL_FUNCTION_CH_POS];
+    if(ch < OA_AN_CHANNELS_NUM) {
+      tx_buffer[ANS_GET_CHANNEL_FUNCTION_CH_POS] = ch;
+      tx_buffer[ANS_GET_CHANNEL_FUNCTION_FUN_POS] = output_fun[ch];
+      if(rtd[ch].use_3_wires && rtd[ch].is_rtd) {
+        tx_buffer[ANS_GET_CHANNEL_FUNCTION_FUN_POS] = CH_FUNC_RESISTANCE_MEASUREMENT_3_WIRES;
+      }
+      prepareGetAns(tx_buffer, ANS_GET_CHANNEL_FUNCTION, LEN_ANS_GET_CHANNEL_FUNCTION);
+
+    }
+    return true;
+  }
+  return false;
+
+}
+
+
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 int OptaAnalog::parse_rx() {
+  timer_call_num = 0;
+  _resetOutputs(false);
   /* call base version because here are handled assign
      addresses messages NOTE: this must be done for
      every other expansion type derived from Module */
@@ -2245,90 +2297,82 @@ int OptaAnalog::parse_rx() {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("get   ADC channel");
 #endif
-#ifdef BP_USE_CRC
-    rv = ANS_OA_GET_ADC_LEN_CRC;
-#else
-    rv = ANS_OA_GET_ADC_LEN;
-#endif
+    rv = getExpectedAnsLen(ANS_LEN_OA_GET_ADC);
   } else if (parse_get_all_adc_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("get   ADC channel (ALL version)");
 #endif
-#ifdef BP_USE_CRC
-    rv = ANS_OA_GET_ADC_ALL_LEN_CRC;
-#else
-    rv = ANS_OA_GET_ADC_ALL_LEN;
-#endif
+    rv = getExpectedAnsLen(ANS_LEN_OA_GET_ALL_ADC);
   } else if (parse_get_rtd_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("get   RTD value");
 #endif
-#ifdef BP_USE_CRC
-    rv = ANS_OA_GET_RTD_LEN_CRC;
-#else
-    rv = ANS_OA_GET_RTD_LEN;
-#endif
+    rv = getExpectedAnsLen(ANS_LEN_OA_GET_RTD);
   } else if (parse_get_di_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("get   DI value");
 #endif
-#ifdef BP_USE_CRC
-    rv = ANS_OA_GET_DI_LEN_CRC;
-#else
-    rv = ANS_OA_GET_DI_LEN;
-#endif
+    rv = getExpectedAnsLen(ANS_LEN_OA_GET_DI);
   } else if (parse_set_led()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("set   LED status");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_setup_adc_channel()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin ADC channel");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_set_dac_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("set   DAC value");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_set_rtd_update_rate()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin RTD CURRENT");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_set_pwm_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("set PWM value");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_setup_rtd_channel()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin RTD channel");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_setup_dac_channel()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin DAC channel");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_setup_di_channel()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin DI channel");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_set_all_dac_value()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("set all DAC values");
 #endif
-    rv = CTRL_ANS_OA_LEN;
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
   } else if (parse_setup_high_imp_channel()) {
 #if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
     Serial.println("begin HIGH IMPEDENCE channel");
 #endif
-    rv = CTRL_ANS_OA_LEN;
-  } else {
+    rv = getExpectedAnsLen(ANS_LEN_OA_ACK);
+  } else if(parse_get_channel_func()) {
+#if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE
+    Serial.println("get channel function");
+#endif       
+    rv = getExpectedAnsLen(LEN_ANS_GET_CHANNEL_FUNCTION);
+  } 
+  else {
+#if defined DEBUG_SERIAL && defined DEBUG_ANALOG_PARSE_MESSAGE    
     Serial.println(" !!! MESSAGE UNKNOWN !!!");
+#endif    
   }
   return rv;
 }
@@ -2348,7 +2392,7 @@ bool OptaAnalog::are_all_dac_updated() {
 bool OptaAnalog::configuration_to_be_updated() {
   bool rv = false;
   for(int ch = 0; ch < OA_AN_CHANNELS_NUM; ch++) {
-    if(update_fun[ch] != fun[ch]) {
+    if(update_fun[ch].size() > 0) {
       rv = true;
       break;
     }
@@ -2360,16 +2404,19 @@ bool OptaAnalog::configuration_to_be_updated() {
 void OptaAnalog::setup_channels() {
   if (configuration_to_be_updated()) {
     stopAdc();
+    ChConfig cfg;
     for (uint8_t ch = 0; ch < OA_AN_CHANNELS_NUM; ch++) {
-      if (update_fun[ch] != fun[ch]) {
+      if (update_fun[ch].size() > 0) {
         /* new function has been requested */
+        cfg = update_fun[ch].front();
+        update_fun[ch].pop();
         
         /* disable adc conversion (it will be enable in any case after) */
         if (adc[ch].en_conversion) {
           configureAdcEnable(ch, false);
         }
 
-        if(write_function_configuration[ch]) {
+        if(cfg.write) {
           /* channel must be changed only when an actual request of new function
              is active and not when an ADC is added to a channel */
 
@@ -2399,19 +2446,22 @@ void OptaAnalog::setup_channels() {
 
           /* write the new function only if the new f*/
         
-          if (update_fun[ch] != CH_FUNC_HIGH_IMPEDENCE) {
-            sendFunction(ch, update_fun[ch]);
+          if (cfg.f != CH_FUNC_HIGH_IMPEDENCE) {
+            sendFunction(ch, cfg.f);
           }
-          write_function_configuration[ch] = false;
+
+          /* output_fun cannot be equal to fun */
+          output_fun[ch] = cfg.f;
+
         } //if(write_function_configuration[ch]) {
-           /* update the function so that it will be not updated again */
-        fun[ch] = update_fun[ch];
+           /* update the function */
+        fun[ch] = cfg.f;
       }
 
       /* update the channel configurazione (to be done always also in case
          of add an ADC channel */
 
-      switch (update_fun[ch]) {
+      switch (cfg.f) {
       case CH_FUNC_HIGH_IMPEDENCE:
         break;
       case CH_FUNC_VOLTAGE_OUTPUT:
@@ -2459,6 +2509,45 @@ std::string OptaAnalog::getProduct() {
   std::string rv(OPTA_ANALOG_DESCRIPTION);
   return rv;
 }
+
+/* -------------------------------------------------------------------------- */
+void OptaAnalog::timer_callback(timer_callback_args_t *arg) {
+  /* ------------------------------------------------------------------------ */
+  OptaAnalog *ptr = nullptr;
+  if (arg != nullptr) {
+    ptr = (OptaAnalog *)arg->p_context;
+  }
+
+  if (ptr != nullptr) {
+    ptr->_incrementTimerCallNum();
+
+    if (ptr->_timerElapsed()) {
+      ptr->_resetTimerCallNum();
+      if (ptr->_timeIsNotForever()) {
+        ptr->_resetOutputs(true);
+      }
+    }
+  }
+}
+
+
+void OptaAnalog::set_up_timer() {
+  
+  uint8_t type;
+  int8_t num = FspTimer::get_available_timer(type);
+  if (num >= 0) {
+    timer.begin(TIMER_MODE_PERIODIC, type, num, 1000, 50, timer_callback, this);
+    timer.setup_overflow_irq(14);
+    timer.open();
+    timer.start();
+  }
+}
+
+
+void OptaAnalog::_resetOutputs(bool flag) {
+  use_default_output_values = flag;
+}
+
 
 void OptaAnalog::goInBootloaderMode() { goBootloader(); }
 
@@ -2580,50 +2669,51 @@ void print_adc_configuration(uint16_t v) {
 }
 
 void print_adc_control(uint16_t v, int d) {
-  int ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 1 : 2;
+  int ch = (d == OA_AN_DEVICE_0) ? 1 : 2;
   Serial.print(" ");
+  Serial.print("# ADC CONTROL: ");
   if (v & 1) {
     Serial.print(String(ch) + " YES ");
   } else {
     Serial.print(String(ch) + " NO ");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 0 : 3;
+  ch = (d == OA_AN_DEVICE_0) ? 0 : 3;
   if (v & 2) {
     Serial.print(String(ch) + " YES ");
   } else {
     Serial.print(String(ch) + " NO ");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 6 : 4;
+  ch = (d == OA_AN_DEVICE_0) ? 6 : 4;
   if (v & 4) {
     Serial.print(String(ch) + " YES ");
   } else {
     Serial.print(String(ch) + " NO ");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 7 : 5;
+  ch = (d == OA_AN_DEVICE_0) ? 7 : 5;
   if (v & 8) {
     Serial.print(String(ch) + " YES ");
   } else {
     Serial.print(String(ch) + " NO ");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 1 : 2;
+  ch = (d == OA_AN_DEVICE_0) ? 1 : 2;
   if (v & 16) {
     // Serial.println("- Ch " + String(ch) + " ADC diag enabled");
   } else {
     // Serial.println("- Ch " + String(ch) + " ADC diag DISABLED");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 0 : 3;
+  ch = (d == OA_AN_DEVICE_0) ? 0 : 3;
   if (v & 32) {
     // Serial.println("- Ch " + String(ch) + " ADC diag enabled");
   } else {
     // Serial.println("- Ch " + String(ch) + " ADC diag DISABLED");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 6 : 4;
+  ch = (d == OA_AN_DEVICE_0) ? 6 : 4;
   if (v & 64) {
     // Serial.println("- Ch " + String(ch) + " ADC diag enabled");
   } else {
     // Serial.println("- Ch " + String(ch) + " ADC diag DISABLED");
   }
-  ch = (d == OA_DUMMY_CHANNEL_DEVICE_0) ? 7 : 5;
+  ch = (d == OA_AN_DEVICE_0) ? 7 : 5;
   if (v & 128) {
     // Serial.println("- Ch " + String(ch) + " ADC diag enabled");
   } else {
@@ -2850,7 +2940,9 @@ void OptaAnalog::debugDiConfiguration(uint8_t ch) {
   uint16_t r2 = 0;
   uint16_t reg = 0;
   read_reg(0x09, reg, ch);
-  read_reg(0x22, r2, get_dummy_channel(ch));
+  uint8_t device = GET_DEVICE_FROM_CHANNEL(ch);
+
+  read_direct_reg(device, 0x22, r2);
   print_digital_input_configuration(reg, r2);
 }
 
@@ -2871,14 +2963,16 @@ void OptaAnalog::displayOaDebugInformation() {
     debugDiConfiguration(i);
   }
 #ifdef ARDUINO_OPTA_ANALOG
-  read_reg(0x23, reg, OA_DUMMY_CHANNEL_DEVICE_0);
-  print_adc_control(reg, OA_DUMMY_CHANNEL_DEVICE_0);
-  read_reg(0x23, reg, OA_DUMMY_CHANNEL_DEVICE_1);
-  print_adc_control(reg, OA_DUMMY_CHANNEL_DEVICE_1);
+  read_direct_reg(OA_AN_DEVICE_0, 0x23, reg);
+  
+  print_adc_control(reg, OA_AN_DEVICE_0);
+  read_direct_reg(OA_AN_DEVICE_1, 0x23, reg);
+  
+  print_adc_control(reg, OA_AN_DEVICE_1);
   Serial.println();
 #else
-  read_reg(0x23, reg, OA_DUMMY_CHANNEL_DEVICE_0);
-  print_adc_control(reg, OA_DUMMY_CHANNEL_DEVICE_0);
+  read_direct_reg(OA_AN_DEVICE_0, 0x23, reg);
+  print_adc_control(reg, OA_AN_DEVICE_0);
 #endif
 }
 
@@ -2921,8 +3015,6 @@ void printFunction(CfgFun_t f) {
 void OptaAnalog::debugPrintChannelFunction(uint8_t ch) {
   Serial.print("Ch " + String(ch) + " Fun ");
   printFunction(fun[ch]);
-  Serial.print("   |    Update Fun ");
-  printFunction(update_fun[ch]);
   Serial.println();
 
 }

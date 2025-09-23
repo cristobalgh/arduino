@@ -88,8 +88,8 @@ void setup() {
   // number of bytes we need to transmit a float
   radio.setPayloadSize(sizeof(payload));  // char[7] & uint8_t datatypes occupy 8 bytes
 
-  // set the TX address of the RX node into the TX pipe
-  radio.openWritingPipe(address[radioNumber]);  // always uses pipe 0
+  // set the TX address of the RX node for use on the TX pipe (pipe 0)
+  radio.stopListening(address[radioNumber]);  // put radio in TX mode
 
   // set the RX address of the TX node into a RX pipe
   radio.openReadingPipe(1, address[!radioNumber]);  // using pipe 1
@@ -98,7 +98,6 @@ void setup() {
     // setup the TX node
 
     memcpy(payload.message, "Hello ", 6);  // set the outgoing message
-    radio.stopListening();                 // put radio in TX mode
   } else {
     // setup the RX node
 
@@ -154,7 +153,7 @@ void loop() {
         Serial.println(received.counter);    // print the incoming payload's counter
         payload.counter = received.counter;  // save incoming counter for next outgoing counter
       } else {
-        Serial.println(F(" Recieved no response."));  // no response received
+        Serial.println(F(" Received no response."));  // no response received
       }
     } else {
       Serial.println(F("Transmission failed or timed out"));  // payload was not delivered
@@ -167,7 +166,7 @@ void loop() {
     // This device is a RX node
 
     uint8_t pipe;
-    if (radio.available(&pipe)) {  // is there a payload? get the pipe number that recieved it
+    if (radio.available(&pipe)) {  // is there a payload? get the pipe number that received it
       PayloadStruct received;
       radio.read(&received, sizeof(received));  // get incoming payload
       payload.counter = received.counter + 1;   // increment incoming counter for next outgoing response

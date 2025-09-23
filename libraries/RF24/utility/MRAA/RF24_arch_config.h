@@ -30,10 +30,10 @@
 #define PROGMEM
 #define PRIPSTR "%s"
 
-#ifdef SERIAL_DEBUG
-    #define IF_SERIAL_DEBUG(x) ({ x; })
+#ifdef RF24_DEBUG
+    #define IF_RF24_DEBUG(x) ({ x; })
 #else
-    #define IF_SERIAL_DEBUG(x)
+    #define IF_RF24_DEBUG(x)
 #endif
 
 #define digitalWrite(pin, value) GPIO::write(pin, value)
@@ -42,7 +42,7 @@
 
 #ifndef __TIME_H__
     // Prophet: Redefine time functions only if precompiled arduino time is not included
-    #define delay(milisec)          __msleep(milisec)
+    #define delay(millisec)         __msleep(millisec)
     #define delayMicroseconds(usec) __usleep(usec)
     #define millis()                __millis()
 #endif

@@ -19,6 +19,13 @@ See the releases' descriptions on
 [the library's release page](http://github.com/nRF24/RF24/releases) for a list of
 changes.
 
+> [!IMPORTANT]
+> There's going to be major changes in v2.0.
+> As of v1.5, there is [newer API](migration.md) that should be used instead of
+> the @ref deprecated "deprecated API".
+>
+> See our [migration guide](migration.md) to understand what you should update in your code.
+
 ## Useful References
 
 - [RF24 Class Documentation](classRF24.html)
@@ -73,7 +80,7 @@ CE and CSN are configurable.
 | 2   | VCC      | 3.3V        | pin 8              | pin 1           | regulator 3.3V required | rpi-3v3    | (17)              |
 | 3   | CE       | digIO 7     | pin 2              | pin 12          | pin to 3.3V             | rpi-gpio22 | (15)              |
 | 4   | CSN      | digIO 8     | pin 3              | pin 11          | RESET                   | rpi-gpio8  | (24)              |
-| 5   | SCK      | digIO 13    | pin 7              | pin 9           | SCK                     | rpi-sckl   | (23)              |
+| 5   | SCK      | digIO 13    | pin 7              | pin 9           | SCK                     | rpi-sclk   | (23)              |
 | 6   | MOSI     | digIO 11    | pin 6              | pin 7           | MOSI                    | rpi-mosi   | (19)              |
 | 7   | MISO     | digIO 12    | pin 5              | pin 8           | MISO                    | rpi-miso   | (21)              |
 | 8   | IRQ      | -           | -                  | -               | -                       | -          | -                 |

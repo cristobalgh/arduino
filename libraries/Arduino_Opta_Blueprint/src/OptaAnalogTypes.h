@@ -23,20 +23,6 @@
 #include "sys/_stdint.h"
 #include <stdint.h>
 
-/* ###################### Channel functions ################################# */
-
-typedef enum {
-  CH_FUNC_HIGH_IMPEDENCE,
-  CH_FUNC_VOLTAGE_OUTPUT,
-  CH_FUNC_CURRENT_OUTPUT,
-  CH_FUNC_VOLTAGE_INPUT,
-  CH_FUNC_CURRENT_INPUT_EXT_POWER,
-  CH_FUNC_CURRENT_INPUT_LOOP_POWER,
-  CH_FUNC_RESISTANCE_MEASUREMENT,
-  CH_FUNC_DIGITAL_INPUT,
-  CH_FUNC_DIGITAL_INPUT_LOOP_POWER,
-  CH_FUNC_UNDEFINED
-} CfgFun_t;
 
 /* ########################## ADC configuration ############################# */
 
@@ -97,7 +83,6 @@ public:
 class CfgPwm {
 public:
   PwmOut pwm;
-  bool active;
   /* period_us is the period set to the pwm (it is updated only when different
    * from set_period_us, this is necessary because if the period is continuously
    * updated the timer does not work as expected and the is not set properly)*/
@@ -109,7 +94,7 @@ public:
   /* set_pulse_us is the pulse set point */
   uint32_t set_pulse_us;
   CfgPwm(int p)
-      : pwm(p), active(false), period_us(0), pulse_us(0), set_period_us(0),
+      : pwm(p), period_us(0), pulse_us(0), set_period_us(0),
         set_pulse_us(0) {}
   void begin() {
     pwm.begin();

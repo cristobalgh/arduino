@@ -29,10 +29,11 @@ typedef uint8_t rf24_gpio_pin_t;
 
 #ifndef RF24_LINUX_GPIO_CHIP
     /**
-     * The default GPIO chip to use.  Defaults to `/dev/gpiochip4` (for RPi5).
-     * Falls back to `/dev/gpiochip0` if this value is somehow incorrect.
+     * The default GPIO chip to use.
+     * Defaults to `/dev/gpiochip0`.
+     * Define this when compiling if this value is somehow incorrect.
      */
-    #define RF24_LINUX_GPIO_CHIP "/dev/gpiochip4"
+    #define RF24_LINUX_GPIO_CHIP "/dev/gpiochip0"
 #endif
 
 #define PSTR(x)  (x)
@@ -41,10 +42,10 @@ typedef uint8_t rf24_gpio_pin_t;
 #define PROGMEM
 #define PRIPSTR "%s"
 
-#ifdef SERIAL_DEBUG
-    #define IF_SERIAL_DEBUG(x) ({ x; })
+#ifdef RF24_DEBUG
+    #define IF_RF24_DEBUG(x) ({ x; })
 #else
-    #define IF_SERIAL_DEBUG(x)
+    #define IF_RF24_DEBUG(x)
 #endif
 
 #define digitalWrite(pin, value) bcm2835_gpio_write(pin, value)
