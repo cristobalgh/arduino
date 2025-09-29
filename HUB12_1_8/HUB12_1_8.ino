@@ -3,13 +3,6 @@
 // https://docs.google.com/spreadsheets/d/1zATPOVYvM4deE6Tu0Ynbwy8HzEikA4DD0I224S6h0Ag/edit?gid=0#gid=0
 
 #include <time.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdint.h>
-#include "font8x8.h"
-
-#define WIDTH 64
-#define HEIGHT 16
 
  //ESP32
 #define oe_pin     13 // OE en conector IDC HUB12
@@ -29,7 +22,8 @@
 #define dato_pinR  8 // R o Data en conector IDC HUB12
 #define c_pin      7 // C en conector IDC HUB12
 */
-uint8_t mensaje[] = {
+
+/*uint8_t mensaje[] = { //lineas verticales
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010,
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010,
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010,
@@ -46,58 +40,31 @@ uint8_t mensaje[] = {
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010,
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010,
 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010, 0b10101010
+};*/
+
+uint8_t mensaje[] = { //hola maipo
+0b11110111, 0b10000000, 0b11100011, 0b10000100, 0b11110011, 0b00000000, 0b11111111, 0b00000000,
+0b00000110, 0b10001001, 0b00001001, 0b00001001, 0b10001001, 0b00000000, 0b11111111, 0b00000000,
+0b10001001, 0b10001010, 0b10001010, 0b11111010, 0b10001010, 0b10001010, 0b10001010, 0b10001001,
+0b11001111, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b00101000, 0b11001000,
+0b01001010, 0b01001010, 0b01011011, 0b01101010, 0b01001001, 0b00000000, 0b11111111, 0b00000000,
+0b01000100, 0b01000100, 0b11000111, 0b01000100, 0b10000111, 0b00000000, 0b11111111, 0b00000000,
+0b10100010, 0b00100010, 0b00100010, 0b00111110, 0b00100010, 0b00100010, 0b00010100, 0b00001000,
+0b00001000, 0b00001000, 0b00001000, 0b00001001, 0b00001001, 0b00001010, 0b00001100, 0b00001000,
+0b00100100, 0b00101001, 0b00111001, 0b10100101, 0b00111001, 0b00000000, 0b11111111, 0b00000000,
+0b11001111, 0b00101000, 0b00101110, 0b00101000, 0b00101111, 0b00000000, 0b11111111, 0b00000000,
+0b00101000, 0b00101000, 0b00101000, 0b00101111, 0b00101000, 0b10101000, 0b01100101, 0b00100010,
+0b10101000, 0b10101000, 0b10101000, 0b10101000, 0b10101110, 0b10101001, 0b00101001, 0b00101110,
+0b01110010, 0b01001010, 0b01110011, 0b01001010, 0b01110001, 0b00000000, 0b11111111, 0b00000000,
+0b01001110, 0b01000000, 0b11000000, 0b01000000, 0b10000000, 0b00000000, 0b11111111, 0b00000000,
+0b00111000, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b01000100, 0b00111000,
+0b00000000, 0b00010000, 0b01010100, 0b00111000, 0b11111110, 0b00111000, 0b01010100, 0b00010000                                                                                                                                              
 };
 
 size_t len = sizeof(mensaje) / sizeof(mensaje[0]);
 int fila  = 1;
 int bit   = 0;
 int aux   = 0;
-uint8_t matriz[HEIGHT][WIDTH];
-
-void setup() {  
-  pinMode(oe_pin, OUTPUT);
-  pinMode(a_pin, OUTPUT);
-  pinMode(b_pin, OUTPUT);
-  pinMode(c_pin, OUTPUT);
-  pinMode(clk_pin, OUTPUT);
-  pinMode(sclk_pin, OUTPUT);
-  pinMode(dato_pinR, OUTPUT);  
-  digitalWrite(oe_pin, 0);
-  digitalWrite(a_pin, 0);
-  digitalWrite(b_pin, 0);
-  digitalWrite(c_pin, 0);
-  digitalWrite(sclk_pin, 0);
-  digitalWrite(clk_pin, 0);  
-  digitalWrite(dato_pinR, 0);  
-}
-
-// Convierte texto en matriz 16x64 de 0/1
-void texto_a_matriz(const char *texto, uint8_t matriz[HEIGHT][WIDTH]) {
-    memset(matriz, 0, HEIGHT * WIDTH);  // limpiar matriz
-
-    int col = 0;
-    int row_offset = 0;
-
-    for (int i = 0; texto[i] != '\0'; i++) {
-        if (col + 8 > WIDTH) {  
-            // si no cabe, saltar a la segunda línea
-            col = 0;
-            row_offset = 8;
-        }
-        if (row_offset >= HEIGHT) break; // si ya no cabe más, salir
-
-        unsigned char c = texto[i];
-        for (int row = 0; row < 8; row++) {
-            uint8_t bits = font8x8_basic[c][row];
-            for (int b = 0; b < 8; b++) {
-                if (bits & (1 << (7 - b))) {
-                    matriz[row_offset + row][col + b] = 1;
-                }
-            }
-        }
-        col += 8; // siguiente carácter ocupa 8 columnas
-    }
-}
 
 void randomizeBits(uint8_t *mensaje, size_t length) {
     for (size_t i = 0; i < length; i++) {
@@ -123,12 +90,27 @@ void eligeFila(bool a,bool b,bool c) {
   digitalWrite(c_pin,c);
 }
 
-void loop() {
-  texto_a_matriz("Hola Mundo 123", matriz);
+void setup() {  
+  pinMode(oe_pin, OUTPUT);
+  pinMode(a_pin, OUTPUT);
+  pinMode(b_pin, OUTPUT);
+  pinMode(c_pin, OUTPUT);
+  pinMode(clk_pin, OUTPUT);
+  pinMode(sclk_pin, OUTPUT);
+  pinMode(dato_pinR, OUTPUT);  
+  digitalWrite(oe_pin, 0);
+  digitalWrite(a_pin, 0);
+  digitalWrite(b_pin, 0);
+  digitalWrite(c_pin, 0);
+  digitalWrite(sclk_pin, 0);
+  digitalWrite(clk_pin, 0);  
+  digitalWrite(dato_pinR, 0);
+}
 
+void loop() {
   if(aux >= 5000) {
-  randomizeBits(mensaje, len);
-  //rotateLeft(mensaje, len);
+  //randomizeBits(mensaje, len);
+  rotateLeft(mensaje, len);
   aux = 0;
   }
   digitalWrite(oe_pin, 0); // habilita la matriz, enciende los LEDs
@@ -142,16 +124,16 @@ void loop() {
   if(fila == 7) {eligeFila(1,0,0);}
   if(fila == 0) {eligeFila(0,0,0);}
     
-  for (int i = 15 ; i >= 7 ; i--) {
+  /*for (int i = 15 ; i >= 7 ; i--) { //para recorrer otra forma
     for (int x = 0 ; x < 64 ; x++ ) {
-      if (x == 32) {bit = matriz[i-8][x-32];}
-      else {bit = matriz[i][x];}
+      if (x == 32) {bit = matriz2[i-8][x-32];}
+      else {bit = matriz2[i][x];}
         digitalWrite(dato_pinR, bit);     // escritura del bit en la salida 
         digitalWrite(clk_pin, 1);         // primer movimiento para consolidar el bit
         digitalWrite(clk_pin, 0);         // segundo movimiento para consolidar el bit 
     }
-  }
-  /*for(int i=0;i<=120;i+=8) { // for para recorrer byte por byte del arreglo     
+  }*/
+  for(int i=0;i<=120;i+=8) { // for para recorrer byte por byte del arreglo     
       for(int x=7;x>=0;x--) { // for para recorrer bit por bit del byte actual
         bit = bitRead(mensaje[fila+i],x); // lectura del bit dentro del byte actual
         digitalWrite(dato_pinR, bit);     // escritura del bit en la salida 
@@ -160,7 +142,7 @@ void loop() {
       //delay(1);
       }
     //delay(100);
-  }*/
+  }
   
   digitalWrite(sclk_pin, 1); // primer movimiento para consolidar el byte
   digitalWrite(sclk_pin, 0); // segundo movimiento para consolidar el byte
