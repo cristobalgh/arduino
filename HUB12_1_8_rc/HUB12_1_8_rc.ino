@@ -1,6 +1,7 @@
 // P4.75 HUB12 1/8 scan 16x64 de un solo color, matrix control.
 // ESP32 dev module
 #include <letras.h>
+#include <WiFi.h>
 
 #define oe_pin     13 // OE en conector IDC HUB12
 #define a_pin      12 // A en conector IDC HUB12
@@ -15,6 +16,37 @@
 
 int fila  = 1;
 int aux   = 0;
+
+char hora[7];
+struct tm timeinfo;
+
+// Configura tu WiFi
+const char* ssid     = "mosqueton";
+const char* password = "esmerilemelo";
+
+// Configuración NTP
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = -10800; // UTC-3 Santiago
+const int   daylightOffset_sec = 0; // Ajusta si quieres horario de verano
+
+// Inicializa WiFi y NTP
+void setupHora() {
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+// Función que devuelve la hora actual de Santiago como string "HHMMSS"
+bool obtenerHora(char* hora_str, size_t len) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return false; // Hora no disponible todavía
+  }
+  strftime(hora_str, len, "%H%M%S", &timeinfo);
+  return true;
+}
 
 uint8_t bits[FILAS][COLS]; //matriz de trabajo
 uint8_t uno[8][16], dos[8][16], tres[8][16], cuatro[8][16],
@@ -83,18 +115,6 @@ void eligeFila(bool a,bool b,bool c) {
   digitalWrite(a_pin,a);
   digitalWrite(b_pin,b);
   digitalWrite(c_pin,c);
-}
-
-// Versión genérica: deduce tamaño de la matriz automáticamente
-template <size_t filas, size_t cols>
-void imprimirMatriz(uint8_t (&matriz)[filas][cols]) {
-  for (size_t i = 0; i < filas; i++) {
-    for (size_t j = 0; j < cols; j++) {
-      Serial.print(matriz[i][j]);
-      Serial.print(" ");
-    }
-    Serial.println();
-  }
 }
 
 void escribe(){
@@ -182,17 +202,23 @@ void setup() {
   digitalWrite(sclk_pin, 0);
   digitalWrite(clk_pin, 0);  
   digitalWrite(dato_pinR, 0);
-  //Serial.begin(115200);
-  //generarMatriz(bits,1,1); // pone un 1 en fila, col 0,0 y 15,63 arriba izq y abajo der
-  write_text(bits,"Maipo");
+  //.begin(115200);
+  //write_text(bits,"8:00:03");
+  setupHora();
+  while (!getLocalTime(&timeinfo)) {
+    delay(1000);
+  }
 }
 
 void loop() {  
-  if(aux >= 300){
-    rotate_horizontal(bits,1);
-    rotateVertical(bits, 1);
-    aux = 0;
-  }
-  aux++;
+//  if(aux >= 300){
+//    rotate_horizontal(bits,1);
+//    rotateVertical(bits, 1);
+//    aux = 0;
+//  }
+//  aux++;
+ 
+  obtenerHora(hora,sizeof(hora));
+  write_text(bits,hora);
   escribe();
 }
