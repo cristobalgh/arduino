@@ -3,6 +3,9 @@
 #include <letras.h>
 #include <WiFi.h>
 
+#include "soc/gpio_struct.h"   // <-- gives you the GPIO struct
+#include "driver/gpio.h"       // <-- for gpio_pad_select_gpio, directions
+
 #define oe_pin     13 // OE en conector IDC HUB12
 #define a_pin      12 // A en conector IDC HUB12
 #define b_pin      14 // B en conector IDC HUB12
@@ -36,6 +39,22 @@ void setupHora() {
     delay(500);
   }
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+//wrapper para funcion dirtecta a registros, mas rapida que
+//digitalWrite y digitalWriteFast
+inline void fastWrite(uint8_t pin, bool val) {
+  if (val) {
+    if (pin < 32)
+      GPIO.out_w1ts = (1UL << pin);
+    else
+      GPIO.out1_w1ts.val = (1UL << (pin - 32));
+  } else {
+    if (pin < 32)
+      GPIO.out_w1tc = (1UL << pin);
+    else
+      GPIO.out1_w1tc.val = (1UL << (pin - 32));
+  }
 }
 
 // Función que devuelve la hora actual de Santiago como string "HHMMSS"
@@ -112,14 +131,71 @@ void rotate_horizontal(uint8_t matrix[16][64], int direction) {
 }
 
 void eligeFila(bool a,bool b,bool c) {
-  digitalWrite(a_pin,a);
-  digitalWrite(b_pin,b);
-  digitalWrite(c_pin,c);
+  fastWrite(a_pin,a);
+  fastWrite(b_pin,b);
+  fastWrite(c_pin,c);
 }
 
 void escribe(){
-  digitalWrite(oe_pin, 0);   // habilita la matriz, enciende los LEDs
-  subCopiar();//la grande a 8 chicas
+
+//Esta es el orden clave para que se vea bien:
+//
+//For each row of pixels, we repeat the following cycle of steps:
+//
+//1. Clock in the data for the current row one bit at a time
+//2. Pull the latch and output enable pins high. This enables the latch,
+//allowing the row data to reach the output driver but it also disables
+//the output so that no LEDs are lit while we're switching rows.
+//3. Switch rows by driving the appropriate row select lines.
+//4. Pull the latch and output enable pins low again, enabling the
+//output and closing the latch so we can clock in the next row of data.
+
+  subCopiar();// matriz bits a 8 chicas
+  
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,ocho[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,siete[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,seis[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }    
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,cinco[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,cuatro[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,tres[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,dos[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  for(int j=15;j>=0;j--){
+    fastWrite(dato_pinR,uno[fila-1][j]);
+    fastWrite(clk_pin,1);
+    fastWrite(clk_pin,0);
+  }
+  
+  fastWrite(oe_pin, 1);   // output disable
+  fastWrite(sclk_pin, 1); // primer movimiento latch
+
   if(fila == 1) {eligeFila(1,1,1);}
   if(fila == 2) {eligeFila(0,1,1);}
   if(fila == 3) {eligeFila(1,0,1);}
@@ -127,64 +203,13 @@ void escribe(){
   if(fila == 5) {eligeFila(1,1,0);}
   if(fila == 6) {eligeFila(0,1,0);}
   if(fila == 7) {eligeFila(1,0,0);}
-  if(fila == 8) {eligeFila(0,0,0);} //8 la cambio a 0
+  if(fila == 8) {eligeFila(0,0,0);}
 
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,ocho[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,siete[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,seis[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }    
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,cinco[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,cuatro[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,tres[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,dos[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  for(int j=15;j>=0;j--){
-    digitalWrite(dato_pinR,uno[fila-1][j]);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  digitalWrite(sclk_pin, 1); // primer movimiento para consolidar el byte
-  digitalWrite(sclk_pin, 0); // segundo movimiento para consolidar el byte
-  
-  for(int j=0;j<128;j++){   // clear data para no ghosting!
-    digitalWrite(dato_pinR,0);
-    digitalWrite(clk_pin,1);
-    digitalWrite(clk_pin,0);
-  }
-  digitalWrite(sclk_pin, 1); // primer movimiento para consolidar el byte
-  digitalWrite(sclk_pin, 0); // segundo movimiento para consolidar el byte
-  
+  fastWrite(sclk_pin, 0); // segundo movimiento latch
+  fastWrite(oe_pin, 0);   // output enable
+
   fila++; // cambio de fila
   if(fila == 9) fila = 1;
-  
-  digitalWrite(oe_pin, 1);   // deshabilita la matriz, apaga los LEDs
-  //delay(2);                  // aca puedo atenuar los leds
 }
 
 void setup() {  
@@ -195,16 +220,14 @@ void setup() {
   pinMode(clk_pin, OUTPUT);
   pinMode(sclk_pin, OUTPUT);
   pinMode(dato_pinR, OUTPUT);  
-  digitalWrite(oe_pin, 0);
-  digitalWrite(a_pin, 0);
-  digitalWrite(b_pin, 0);
-  digitalWrite(c_pin, 0);
-  digitalWrite(sclk_pin, 0);
-  digitalWrite(clk_pin, 0);  
-  digitalWrite(dato_pinR, 0);
-  //.begin(115200);
-  //write_text(bits,"8:00:03");
-  setupHora();
+  fastWrite(oe_pin, 0);
+  fastWrite(a_pin, 0);
+  fastWrite(b_pin, 0);
+  fastWrite(c_pin, 0);
+  fastWrite(sclk_pin, 0);
+  fastWrite(clk_pin, 0);  
+  fastWrite(dato_pinR, 0);
+  setupHora();//se conecta al wifi y recibe hora local
   while (!getLocalTime(&timeinfo)) {
     delay(1000);
   }
@@ -218,7 +241,7 @@ void loop() {
 //  }
 //  aux++;
  
-  obtenerHora(hora,sizeof(hora));
+  obtenerHora(hora,sizeof(hora));//hora actual ya cargada
   write_text(bits,hora);
   escribe();
 }
