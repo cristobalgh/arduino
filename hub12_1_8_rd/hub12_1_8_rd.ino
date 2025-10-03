@@ -183,8 +183,10 @@ void loop() {
   if (obtenerHora(hora, sizeof(hora))) {
     write_text(bits, hora);
   }
+  
   escribe();
 
+  //sicroniza hora cada cierto tiempo
   unsigned long now = millis();
   if (now - lastNtpSync > RESYNC_INTERVAL) {
     reSyncHora();
