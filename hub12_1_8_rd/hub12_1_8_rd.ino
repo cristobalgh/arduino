@@ -22,9 +22,14 @@ int aux   = 0;
 char hora[7];
 struct tm timeinfo; 
 
+//// WiFi
+//const char* ssid     = "e30n";
+//const char* password = "cris1122";
+
 // WiFi
 const char* ssid     = "mosqueton";
 const char* password = "esmerilemelo";
+
 
 // NTP y zona horaria Chile
 const char* ntpServer = "pool.ntp.org";
@@ -33,6 +38,10 @@ const char* tzInfo    = "CLT3CLST,M10.2.0/0,M3.2.0/0";
 // resincronización cada hora
 const unsigned long RESYNC_INTERVAL = 3600000;  
 unsigned long lastNtpSync = 0;
+
+//reconexion cada tanto si se cae wifi
+unsigned long lastWifiAttempt = 0;
+const unsigned long WIFI_RECONNECT_INTERVAL = 5UL * 60UL * 1000UL; // 5 minutos
 
 // ---------- Fast GPIO -----------
 inline void fastWrite(uint8_t pin, bool val) {
@@ -182,7 +191,9 @@ void loop() {
     lastNtpSync = now;
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
+  // Reintentar conexión WiFi cada 5 minutos si está desconectado
+  if (WiFi.status() != WL_CONNECTED && now - lastWifiAttempt > WIFI_RECONNECT_INTERVAL) {
     WiFi.begin(ssid, password);
+    lastWifiAttempt = now; // actualizamos el temporizador
   }
 }
