@@ -127,7 +127,7 @@ void copiar_a_bits(uint8_t bits[FILAS][COLS], int offset) {
 //    textoAncho = len * charWidth; // ancho real en píxeles
 //
 //    for (int t = 0; t < len; t++) {
-//        const uint8_t *glyph = getGlyph8(text[t]);
+//        const uint8_t *glyph = getGlyph(text[t]);
 //        for (int row = 0; row < 8; row++) {
 //            uint8_t bitsRow = glyph[row];
 //            for (int repeat = 0; repeat < 2; repeat++) {
@@ -161,7 +161,7 @@ void write_text(const char *text) {
     textoAncho = len * charWidth; // ancho real en píxeles
 
     for (int t = 0; t < len; t++) {
-        const uint8_t *glyph = getGlyph8(text[t]);
+        const uint8_t *glyph = getGlyph(text[t]);
         for (int row = 0; row < textHeight; row++) { // textHeight es 8
             uint8_t bitsRow = glyph[row];
             
