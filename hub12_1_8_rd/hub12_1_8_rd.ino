@@ -30,7 +30,6 @@ struct tm timeinfo;
 const char* ssid     = "mosqueton";
 const char* password = "esmerilemelo";
 
-
 // NTP y zona horaria Chile
 const char* ntpServer = "pool.ntp.org";
 const char* tzInfo    = "CLT3CLST,M10.2.0/0,M3.2.0/0"; 
@@ -42,6 +41,11 @@ unsigned long lastNtpSync = 0;
 //reconexion cada tanto si se cae wifi
 unsigned long lastWifiAttempt = 0;
 const unsigned long WIFI_RECONNECT_INTERVAL = 5UL * 60UL * 1000UL; // 5 minutos
+
+// ---------- Matriz buffers -----------
+uint8_t bits[FILAS][COLS];
+uint8_t uno[8][16], dos[8][16], tres[8][16], cuatro[8][16],
+        cinco[8][16], seis[8][16], siete[8][16], ocho[8][16];
 
 // ---------- Fast GPIO -----------
 inline void fastWrite(uint8_t pin, bool val) {
@@ -83,11 +87,6 @@ bool obtenerHora(char* hora_str, size_t len) {
   strftime(hora_str, len, "%H%M%S", &timeinfo);
   return true;
 }
-
-// ---------- Matriz buffers -----------
-uint8_t bits[FILAS][COLS];
-uint8_t uno[8][16], dos[8][16], tres[8][16], cuatro[8][16],
-        cinco[8][16], seis[8][16], siete[8][16], ocho[8][16];
 
 void copySubMatrix(uint8_t src[16][64], uint8_t dest[8][16], int startFila, int startCol) {
   for (int f = 0; f < 8; f++) {
