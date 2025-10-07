@@ -17,8 +17,8 @@
 #define COLS  64
 
 // ===== Variable Global para guardar el texto a mostrar =====
-//const char *TEXTO_A_MOSTRAR = "   La imaginaci}n es m{s importante que el conocimiento.   A.E.    ";
-const char *TEXTO_A_MOSTRAR = "   Ich sorge mich nie um die Zukunft. Sie kommt fr[h genug.   ";
+const char *TEXTO_A_MOSTRAR = "   La imaginaci{n es m}s importante que el conocimiento.   A.E.    ";
+//const char *TEXTO_A_MOSTRAR = "   Ich sorge mich nie um die Zukunft. Sie kommt fr[h genug.   ";
 
 #define MAX_COLS COLS*10   // hasta 80 caracteres de 8x8 
 
