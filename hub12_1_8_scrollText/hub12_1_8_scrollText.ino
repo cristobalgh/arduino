@@ -1,10 +1,10 @@
 // P4.75 HUB12 1/8 scan 16x64 de un solo color, matrix control.
 // scroll text maximo MAX_COLS, caracteres de 8 bits de ancho
-// ESP32 dev module
 
 #include "soc/gpio_struct.h"
 #include "letras.h"
 
+// ESP32 dev module
 #define oe_pin     13
 #define a_pin      12
 #define b_pin      14
@@ -12,6 +12,7 @@
 #define clk_pin    27
 #define sclk_pin   26
 #define dato_pinR  25
+
 #define FILAS 16
 #define COLS  64
 
@@ -112,74 +113,60 @@ void copiar_a_bits(uint8_t bits[FILAS][COLS], int offset) {
     }
 }
 
-////esta estira los caracteres de 8x8 a 16x8
-//void write_text(const char *text) {
-//    memset(matrizGlobal, 0, sizeof(matrizGlobal));
-//
-//    int charWidth = 8;
-//    int textHeight = 16;
-//    int vOffset = (FILAS - textHeight) / 2;
-//
-//    int len = strlen(text);
-//    int maxChars = MAX_COLS / charWidth;
-//    if (len > maxChars) len = maxChars;
-//
-//    textoAncho = len * charWidth; // ancho real en píxeles
-//
-//    for (int t = 0; t < len; t++) {
-//        const uint8_t *glyph = getGlyph(text[t]);
-//        for (int row = 0; row < 8; row++) {
-//            uint8_t bitsRow = glyph[row];
-//            for (int repeat = 0; repeat < 2; repeat++) {
-//                int r = row * 2 + repeat + vOffset;
-//                if (r < 0 || r >= FILAS) continue;
-//                for (int bit = 0; bit < 8; bit++) {
-//                    int c = t * charWidth + bit;
-//                    if (c >= MAX_COLS) continue;
-//                    matrizGlobal[r][c] = (bitsRow & (1 << (7 - bit))) ? 1 : 0;
-//                }
-//            }
-//        }
-//    }
-//}
-
-//esta no los estira
-void write_text(const char *text) {
+void write_text(const char *text, bool stretch) {
+    // Limpiar la matriz antes de dibujar
     memset(matrizGlobal, 0, sizeof(matrizGlobal));
 
     int charWidth = 8;
-    // 1. Reducir la altura del texto a 8 (el tamaño real del glifo)
-    int textHeight = 8; 
     
-    // 2. Recalcular el desplazamiento vertical para centrar el bloque de texto de 8 filas
-    int vOffset = (FILAS - textHeight) / 2; 
+    // 1. Determinar la altura real de dibujo basada en 'stretch'
+    // Si stretch es true, la altura es 16 (doble); si es false, es 8 (normal).
+    int textHeight = stretch ? 16 : 8;
+    
+    // 2. Calcular el desplazamiento vertical para centrar el bloque de texto
+    int vOffset = (FILAS - textHeight) / 2;
 
     int len = strlen(text);
     int maxChars = MAX_COLS / charWidth;
     if (len > maxChars) len = maxChars;
 
-    textoAncho = len * charWidth; // ancho real en píxeles
+    // Esto asume que 'textoAncho' es global o una variable miembro
+    textoAncho = len * charWidth; 
 
+    // Bucle principal para recorrer todos los caracteres del texto
     for (int t = 0; t < len; t++) {
         const uint8_t *glyph = getGlyph(text[t]);
-        for (int row = 0; row < textHeight; row++) { // textHeight es 8
+        
+        // 3. Bucle a través de las 8 filas del glifo base
+        for (int row = 0; row < 8; row++) {
             uint8_t bitsRow = glyph[row];
             
-            // 3. Eliminar el bucle 'repeat' y dibujar solo una vez por fila del glifo
-            int r = row + vOffset;
+            // 4. Determinar cuántas veces repetir la fila verticalmente
+            // Si stretch es true, repite 2 veces; si es false, repite 1 vez.
+            int repeatCount = stretch ? 2 : 1;
             
-            if (r < 0 || r >= FILAS) continue;
-            
-            for (int bit = 0; bit < 8; bit++) {
-                int c = t * charWidth + bit;
-                if (c >= MAX_COLS) continue;
+            // Bucle de repetición (vertical)
+            for (int repeat = 0; repeat < repeatCount; repeat++) {
+                // Cálculo de la fila (r) en la matriz global
+                // Si stretch=true: r = row * 2 + repeat + vOffset
+                // Si stretch=false: r = row * 1 + repeat (que es siempre 0) + vOffset
+                int r = row * repeatCount + repeat + vOffset;
                 
-                // El bit se dibuja en la posición (r, c)
-                matrizGlobal[r][c] = (bitsRow & (1 << (7 - bit))) ? 1 : 0;
+                if (r < 0 || r >= FILAS) continue;
+                
+                // Bucle para dibujar los 8 bits de la fila (horizontal)
+                for (int bit = 0; bit < 8; bit++) {
+                    int c = t * charWidth + bit;
+                    if (c >= MAX_COLS) continue;
+                    
+                    // Asignar el valor del bit (1 o 0) a la matriz global
+                    matrizGlobal[r][c] = (bitsRow & (1 << (7 - bit))) ? 1 : 0;
+                }
             }
         }
     }
 }
+
 void inicializar(){
   Serial.begin(115200);
   pinMode(oe_pin, OUTPUT);
@@ -202,7 +189,7 @@ void inicializar(){
 // ===== Setup y Loop =====
 void setup() {
   inicializar();
-  write_text(TEXTO_A_MOSTRAR);
+  write_text(TEXTO_A_MOSTRAR, false);
   copiar_a_bits(bits,offset);
 }
 
