@@ -24,7 +24,7 @@ const char* password = "esmerilemelo";
 
 // Buffer y constantes para almacenar la frase descargada
 #define MAX_QUOTE_LENGTH 440
-char currentQuote[MAX_QUOTE_LENGTH] = "   Inicializando matriz. Conectando a internet...   ";
+char currentQuote[MAX_QUOTE_LENGTH] = "   Inicializando matriz. Conectando a internet por el wifi: ";
 
 // URL de una API de frases (ejemplo: Forismatic API, devuelve texto simple)
 // Si esta API falla o devuelve JSON, necesitarás ajustarla o usar ArduinoJson.
@@ -42,7 +42,7 @@ const long updateInterval = 10UL * 60UL * 1000UL; //10 minutos
 uint8_t matrizGlobal[FILAS][MAX_COLS];  // Matriz de 16x640 para el texto completo
 int textoAncho = 0;   // Ancho real del texto dibujado en píxeles
 int fila  = 1;
-int refresh = 300;    // Velocidad de scroll (menor = más rápido)
+int refresh = 310;    // Velocidad de scroll (menor = más rápido)
 int aux   = 0;
 int offset  = 0;
 uint8_t bits[FILAS][COLS]; // Buffer de visualización (16x64)
@@ -272,13 +272,16 @@ void inicializar(){
   pinMode(dato_pinR, OUTPUT);
 
   // Poner pines en estado inicial bajo
-  fastWrite(oe_pin, 0);
+  fastWrite(oe_pin, 1); //1 apaga
   fastWrite(a_pin, 0);
   fastWrite(b_pin, 0);
   fastWrite(c_pin, 0);
   fastWrite(sclk_pin, 0);
   fastWrite(clk_pin, 0);
   fastWrite(dato_pinR, 0);
+
+  strcat(currentQuote, ssid);  // Añade ssid al final
+  strcat(currentQuote, "   "); // Añade espacios al final
 }
 
 void setup() {
