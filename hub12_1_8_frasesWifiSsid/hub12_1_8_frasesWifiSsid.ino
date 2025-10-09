@@ -1,12 +1,14 @@
 // P4.75 HUB12 1/8 scan 16x64 de un solo color, matrix control.
 // scroll text maximo MAX_COLS, caracteres de 8 bits de ancho
+// hotspot web server si no conoce el wifi, 192.168.4.1 le das
+// la clave de los wifis que ve
 
 #include "soc/gpio_struct.h"
 #include <WiFi.h> 
 #include <HTTPClient.h>
 #include <AsyncTCP.h>           // REQUIRED for ESPAsyncWebServer
 #include <ESPAsyncWebServer.h>  // REQUIRED for WiFi Manager
-#include "letras.h" // Se asume que este archivo contiene getGlyph() y la font data
+#include "letras.h"
 
 // ===== CONFIGURACIÓN DE PINES (ESP32 dev module) =====
 #define oe_pin      13
@@ -22,7 +24,7 @@
 
 // ===== WIFI MANAGER GLOBALS (from first code) =====
 // Name for the hotspot you'll connect to for configuration
-const char* apSsid = "ESP32-Matrix-Config"; 
+const char* apSsid = "Maipo-Matrix-Config"; 
 // Create an AsyncWebServer object on port 80
 AsyncWebServer server(80);
 // Variables to store the credentials from the web form temporarily
@@ -82,15 +84,14 @@ const char index_html[] PROGMEM = R"rawliteral(
 </body></html>
 )rawliteral";
 
-
 // ===== CREDENCIALES Y CONSTANTES DE RED (Fallbacks/Initial values from second code) =====
 // These will only be used if NO credentials are saved in NVS.
 const char* ssid_config = "mosqueton";
-const char* password_config = "esmerilemel";
+const char* password_config = "esmerilemelo";
 
 // Buffer y constantes para almacenar la frase descargada
 #define MAX_QUOTE_LENGTH 440
-char currentQuote[MAX_QUOTE_LENGTH] = "    Inicializando matriz. Conectando a internet por el wifi: ";
+char currentQuote[MAX_QUOTE_LENGTH] = "    Inicializando matriz    ";
 
 // URL de una API de frases
 const char* QUOTE_API_URL = "http://api.forismatic.com/api/1.0/?method=getQuote&lang=en&format=text"; 
@@ -111,16 +112,17 @@ int aux   = 0;
 int offset  = 0;
 uint8_t bits[FILAS][COLS]; 
 
+//matrices auxiliares para antes de pasar a la matriz led de 1/8
 uint8_t uno[8][16], dos[8][16], tres[8][16], cuatro[8][16],
         cinco[8][16], seis[8][16], siete[8][16], ocho[8][16];
 
-const char *TEXTO_A_MOSTRAR = currentQuote; 
+const char *TEXTO_A_MOSTRAR = currentQuote;
+
 // =========================================================
 //                  FUNCIONES DE GRÁFICOS Y HW
 // =========================================================
 
 void subCopiar() {
-  // Nota: Estas llamadas asumen que 'copySubMatrix' está definida para mover
   // los datos de 'bits' (16x64) a los 8 sub-buffers (8x16).
   copySubMatrix(bits, uno,    8,  0);
   copySubMatrix(bits, dos,    0,  0);
@@ -204,7 +206,7 @@ void copiar_a_bits(uint8_t bits[FILAS][COLS], int offset) {
 }
 
 // =========================================================
-//              FUNCIÓN DE ESCRITURA DE TEXTO UNIFICADA
+//      FUNCIÓN DE ESCRITURA DE TEXTO A MATRIZ UNIFICADA
 // =========================================================
 
 void write_text(const char *text, bool stretch) {
@@ -221,7 +223,6 @@ void write_text(const char *text, bool stretch) {
     textoAncho = len * charWidth;  // ancho real en píxeles
 
     for (int t = 0; t < len; t++) {
-        // NOTE: This requires the 'getGlyph' function from "letras.h"
         const uint8_t *glyph = getGlyph(text[t]);
         
         for (int row = 0; row < 8; row++) {
@@ -249,7 +250,7 @@ void write_text(const char *text, bool stretch) {
 //                  FUNCIÓN DE WIFI MANAGER
 // =========================================================
 
-// Setup the ESP32 as an Access Point (from first code)
+// Setup the ESP32 as an Access Point
 void setupAP() {
     Serial.println("Starting AP for WiFi configuration...");
     WiFi.mode(WIFI_AP);
@@ -366,8 +367,6 @@ void connectToWiFi(const char* connectSsid = nullptr, const char* connectPasswor
             }
             aux = 0;
         }
-        // ***************************************************************
-        
         attempts++;
     }
 
@@ -440,7 +439,7 @@ void inicializar(){
     pinMode(dato_pinR, OUTPUT);
 
     // Poner pines en estado inicial bajo
-    fastWrite(oe_pin, 1); 
+    fastWrite(oe_pin, 1); //1 es apagado
     fastWrite(a_pin, 0);
     fastWrite(b_pin, 0);
     fastWrite(c_pin, 0);
@@ -469,7 +468,7 @@ void setup() {
     if (WiFi.status() != WL_CONNECTED) {
         // Use the initial message about the AP for scrolling
         char apMsg[MAX_QUOTE_LENGTH];
-        snprintf(apMsg, MAX_QUOTE_LENGTH, "19216841");
+        snprintf(apMsg, MAX_QUOTE_LENGTH, "19216841"); //alcanza a escribir esto en la matriz para una pista de dde configurar
         write_text(apMsg, false); 
         
         Serial.println("\nAuto-connect failed. Starting AP.");
@@ -492,7 +491,6 @@ void setup() {
         write_text(failMsg, false); 
         TEXTO_A_MOSTRAR = currentQuote; // Ensure it points to the buffer
     }
-
 
     // 4. Get the first quote if connected. If not, the error message scrolls.
     fetchNewQuote();  
