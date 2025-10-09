@@ -1,89 +1,85 @@
-// P10 HUB12 1/4 scan 32x16  de dos colores (R y G), matrix control by Damián G. Lasso www.LASSO-TECH.com 07/2024
+// --- HUB12 Test 2: 1/8 Scan (8 Address Rows) ---
 
-//#define oe_pin     13  // OE en conector IDC HUB12
-//#define a_pin      12  // A en conector IDC HUB12
-//#define b_pin      14  // B en conector IDC HUB12
-//#define clk_pin    27  // S o CLK en conector IDC HUB12
-//#define sclk_pin   26  // L o SCLK o STB o LAT en conector IDC HUB12
-//#define dato_pinR  25  // R o DATAR o DATA1 en conector IDC HUB12
-//#define dato_pinG  33  // G o DATAG o DATA2 en conector IDC HUB12
+#define OE_PIN      13
+#define A_PIN       12
+#define B_PIN       14
+#define C_PIN       27
+#define CLK_PIN     26
+#define SCLK_PIN    25
+#define DAT_PIN_R1  33 // Red Data (R)
+#define DAT_PIN_R2  32 // Green Data (G - maybe R2)
 
-#define oe_pin     13 // OE en conector IDC HUB12
-#define a_pin      12 // A en conector IDC HUB12
-#define b_pin      14 // B en conector IDC HUB12
-#define c_pin      33 // C en conector IDC HUB12
-#define clk_pin    27 // S o CLK en conector IDC HUB12
-#define sclk_pin   26 // L o SCLK o STB o LAT en conector IDC HUB12
-#define dato_pinR  25 // R o Data en conector IDC HUB12
+const int PANEL_WIDTH = 32;
+const int PANEL_HEIGHT = 16;
+const int NUM_ROW_ADDRESSES = 8; // Addresses 0 through 7
 
-int fila = 3;
+uint8_t frame_buffer[PANEL_HEIGHT][PANEL_WIDTH];
 
-void setup() 
-{  
-//  pinMode(oe_pin, OUTPUT);
-//  pinMode(a_pin, OUTPUT);
-//  pinMode(b_pin, OUTPUT);
-//  pinMode(clk_pin, OUTPUT);
-//  pinMode(sclk_pin, OUTPUT);
-//  pinMode(dato_pinR, OUTPUT);
-//  pinMode(dato_pinG, OUTPUT);
-
-  pinMode(oe_pin, OUTPUT);
-  pinMode(a_pin, OUTPUT);
-  pinMode(b_pin, OUTPUT);
-  pinMode(c_pin, OUTPUT);
-  pinMode(clk_pin, OUTPUT);
-  pinMode(sclk_pin, OUTPUT);
-  pinMode(dato_pinR, OUTPUT);  
- // pinMode(dato_pinG, OUTPUT);
-
-  
-  digitalWrite(oe_pin, 0);
-  digitalWrite(a_pin, 0);
-  digitalWrite(b_pin, 0);
-  digitalWrite(c_pin, 0);
-  digitalWrite(sclk_pin, 0);
-  digitalWrite(clk_pin, 0);  
+void setRowAddress(int row_addr) {
+    digitalWrite(A_PIN, (row_addr & 0b001) ? HIGH : LOW);
+    digitalWrite(B_PIN, (row_addr & 0b010) ? HIGH : LOW);
+    digitalWrite(C_PIN, (row_addr & 0b100) ? HIGH : LOW); // C pin is now used
 }
 
-void loop() 
-{
-  for(int x=0;x<8;x++)
-  {
-  // Determina el valor a escribir:
-    // Si 'x' es par (0, 2, 4, 6), escribe 1.
-    // Si 'x' es impar (1, 3, 5, 7), escribe 0.
-    int valor = (x % 2 == 0) ? 1 : 0;
-    
-    // Escribe el valor alternado al pin.
-    digitalWrite(dato_pinR, valor);  // Escritura del bit alternado
-    
-    // Los pulsos de reloj (CLK) se mantienen iguales.
-    digitalWrite(clk_pin, 1); // primer movimiento para consolidar el bit
-    digitalWrite(clk_pin, 0); // segundo movimiento para consolidar el bit
-  }
+void shiftDataBit(uint8_t data_r1, uint8_t data_r2) {
+    digitalWrite(DAT_PIN_R1, data_r1); 
+    digitalWrite(DAT_PIN_R2, data_r2); 
 
-  digitalWrite(oe_pin, 0); // deshabilita la matriz, apaga los LEDs
-  digitalWrite(sclk_pin, 1); // primer movimiento para consolidar el byte
+    digitalWrite(CLK_PIN, HIGH);
+    digitalWrite(CLK_PIN, LOW);
+}
 
-//  if(fila == 1) { digitalWrite(a_pin, 0); digitalWrite(b_pin, 0); digitalWrite(c_pin, 0); } // Selectores de fila
-//  if(fila == 2) { digitalWrite(a_pin, 0); digitalWrite(b_pin, 0); digitalWrite(c_pin, 1); }
-//  if(fila == 3) { digitalWrite(a_pin, 0); digitalWrite(b_pin, 1); digitalWrite(c_pin, 0); }
-//  if(fila == 4) { digitalWrite(a_pin, 0); digitalWrite(b_pin, 1); digitalWrite(c_pin, 1); }
-//  if(fila == 5) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 0); digitalWrite(c_pin, 0); }
-//  if(fila == 6) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 0); digitalWrite(c_pin, 1); }
-//  if(fila == 7) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 1); digitalWrite(c_pin, 0); }
-//  if(fila == 8) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 1); digitalWrite(c_pin, 1); }
+void drivePanel() {
+    digitalWrite(OE_PIN, HIGH);
+    digitalWrite(SCLK_PIN, LOW);
 
-  if(fila == 1) { digitalWrite(a_pin, 0); digitalWrite(c_pin, 0); } //nada
-  if(fila == 2) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 1); } //algo
-  if(fila == 3) { digitalWrite(a_pin, 0); digitalWrite(c_pin, 1); } //nada
-  if(fila == 4) { digitalWrite(a_pin, 1); digitalWrite(b_pin, 0); } //algo
-  
-  digitalWrite(sclk_pin, 0); // segundo movimiento para consolidar el byte
-  digitalWrite(oe_pin, 1); // habilita la matriz, enciende los LEDs
-  //delay(500);
-  
-  //fila++; // cambio de fila
-  //if(fila > 4) fila = 1; 
+    for (int addr = 0; addr < NUM_ROW_ADDRESSES; addr++) { // Loop 0 to 7
+        setRowAddress(addr);
+
+        for (int col = 0; col < PANEL_WIDTH; col++) {
+            // R1 Data for the Top Half: row 'addr'
+            uint8_t data_r1 = frame_buffer[addr][col];
+            // R2 Data for the Bottom Half: row 'addr + 8' (This is now redundant since addr goes up to 7)
+            // For a 1/8 scan, a single address 'addr' corresponds to TWO active rows, 
+            // one for the R1 line and one for the R2 line.
+            // Often, it's Row 'addr' and Row 'addr + 8'.
+            // Let's assume the R1 line drives Row 'addr' and R2 drives Row 'addr + 8'.
+            
+            // This is the common pattern for 1/8 scan on a 16-row panel (sometimes called 1/4 dual-line).
+            // R1 feeds Row 'addr', R2 feeds Row 'addr+8'.
+            uint8_t data_r2 = frame_buffer[addr + 8][col]; 
+
+            shiftDataBit(data_r1, data_r2);
+        }
+
+        digitalWrite(SCLK_PIN, HIGH);
+        digitalWrite(SCLK_PIN, LOW);
+
+        digitalWrite(OE_PIN, LOW);
+        delayMicroseconds(200); 
+        digitalWrite(OE_PIN, HIGH);
+    }
+}
+
+void setup() {
+    // Initialize pins
+    pinMode(OE_PIN, OUTPUT); pinMode(A_PIN, OUTPUT); pinMode(B_PIN, OUTPUT); 
+    pinMode(C_PIN, OUTPUT); pinMode(CLK_PIN, OUTPUT); pinMode(SCLK_PIN, OUTPUT); 
+    pinMode(DAT_PIN_R1, OUTPUT); pinMode(DAT_PIN_R2, OUTPUT);
+
+    // Initial state
+    digitalWrite(OE_PIN, HIGH); 
+    digitalWrite(SCLK_PIN, LOW); 
+    digitalWrite(CLK_PIN, LOW); 
+
+    // Set a test pattern: A solid horizontal bar across the middle of the display.
+    // Rows 7 and 8 (the border between the two halves)
+    for (int c = 0; c < PANEL_WIDTH; c++) {
+        frame_buffer[7][c] = 1;
+        frame_buffer[8][c] = 1;
+    }
+}
+
+void loop() {
+    drivePanel();
 }

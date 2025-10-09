@@ -42,7 +42,7 @@ const long updateInterval = 10UL * 60UL * 1000UL; //10 minutos
 uint8_t matrizGlobal[FILAS][MAX_COLS];  // Matriz de 16x640 para el texto completo
 int textoAncho = 0;   // Ancho real del texto dibujado en píxeles
 int fila  = 1;
-int refresh = 260;    // Velocidad de scroll (menor = más rápido)
+int refresh = 300;    // Velocidad de scroll (menor = más rápido)
 int aux   = 0;
 int offset  = 0;
 uint8_t bits[FILAS][COLS]; // Buffer de visualización (16x64)
