@@ -52,10 +52,25 @@ uint8_t uno[8][16], dos[8][16], tres[8][16], cuatro[8][16],
         cinco[8][16], seis[8][16], siete[8][16], ocho[8][16];
 
 // Variable que apunta al texto a mostrar. Usamos el buffer dinámico.
-const char *TEXTO_A_MOSTRAR = currentQuote; 
+const char *TEXTO_A_MOSTRAR = currentQuote;
 
-// Se asume que esta función existe en letras.h o en otro lugar
-// void copySubMatrix(uint8_t dest[FILAS][COLS], uint8_t src[8][16], int row_offset, int col_offset); 
+#define FONT_LEN (sizeof(font8x8)/sizeof(font8x8[0]))
+
+// Busca el glifo de un caracter
+const uint8_t* getGlyph(char ch) {
+    for (int i = 0; i < FONT_LEN; i++) {
+        if (font8x8[i].ch == ch) return font8x8[i].glyph;
+    }
+    return font8x8[FONT_LEN-1].glyph; // si no existe, retorna espacio
+}
+
+void copySubMatrix(uint8_t src[16][64], uint8_t dest[8][16], int startFila, int startCol) {
+  for (int f = 0; f < 8; f++) {
+    for (int c = 0; c < 16; c++) {
+      dest[f][c] = src[startFila + f][startCol + c];
+    }
+  }
+}
 
 // =========================================================
 //                  FUNCIONES DE GRÁFICOS Y HW
