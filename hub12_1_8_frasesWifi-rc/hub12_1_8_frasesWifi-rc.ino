@@ -7,7 +7,7 @@
 #include <WebServer.h>   // Para el servidor web de configuración
 #include <DNSServer.h>   // Para el portal cautivo
 #include <HTTPClient.h>  // Para hacer solicitudes HTTP (descargar frases)
-#include <EEPROM.h>      // Para guardar credenciales de forma no volátil
+#include <Preferences.h> // Biblioteca nativa de ESP32 para NVS
 #include "letras.h"      // Se asume que este archivo contiene getGlyph() y la font data
 
 // ===== CONFIGURACIÓN DE PINES (ESP32 dev module) =====
@@ -28,7 +28,7 @@ DNSServer dnsServer;
 const char* AP_SSID = "mLed";
 
 // ===== CONFIGURACIÓN DE EEPROM =====
-#define EEPROM_SIZE 128  // Tamaño en bytes para guardar SSID y contraseña
+Preferences preferences;
 
 // Buffer y constantes para almacenar la frase descargada
 #define MAX_QUOTE_LENGTH 440
@@ -66,9 +66,9 @@ enum WiFiState {
   WF_STARTING,
   WF_DISCONNECTED,
   WF_CONFIG_MODE,
-  WF_CONNECTING,
   WF_CONNECTED
 };
+
 WiFiState wifiState = WF_STARTING;
 
 char current_ssid[33] = "";
@@ -182,27 +182,34 @@ void write_text(const char* text, bool stretch) {
     }
   }
 }
+
 // =========================================================
-//            FUNCIONES PARA GUARDAR Y LEER DE EEPROM
+//            FUNCIONES PARA GUARDAR Y LEER DE NVS (Preferences)
 // =========================================================
+
 void saveCredentials(const char* ssid, const char* password) {
-  Serial.println("Guardando credenciales en EEPROM...");
-  EEPROM.begin(EEPROM_SIZE);
-  EEPROM.writeString(0, ssid);
-  EEPROM.writeString(33, password);  // Dejar espacio para el SSID (32 + nulo)
-  if (EEPROM.commit()) {
-    Serial.println("Credenciales guardadas exitosamente.");
-  } else {
-    Serial.println("Error al guardar credenciales.");
-  }
-  EEPROM.end();
+  Serial.println("Guardando credenciales en NVS (Preferences)...");
+  // "wifi-creds" es un "espacio de nombres" para organizar los datos.
+  // El 'false' significa que abrimos en modo lectura/escritura.
+  preferences.begin("wifi-creds", false);
+  
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  
+  preferences.end(); // Cierra y guarda los cambios
+  Serial.println("Credenciales guardadas exitosamente.");
 }
+
 bool loadCredentials() {
-  Serial.println("Leyendo credenciales de EEPROM...");
-  EEPROM.begin(EEPROM_SIZE);
-  String ssid = EEPROM.readString(0);
-  String password = EEPROM.readString(33);
-  EEPROM.end();
+  Serial.println("Leyendo credenciales de NVS (Preferences)...");
+  // El 'true' significa que abrimos en modo solo lectura (más seguro).
+  preferences.begin("wifi-creds", true); 
+  
+  // Obtenemos el SSID. Si no existe, devuelve un String vacío "".
+  String ssid = preferences.getString("ssid", "");
+  String password = preferences.getString("password", "");
+  
+  preferences.end(); // Cierra el espacio de nombres
 
   if (ssid.length() > 0) {
     Serial.println("Credenciales encontradas.");
@@ -214,19 +221,22 @@ bool loadCredentials() {
     return false;
   }
 }
+
 void clearCredentials() {
-  Serial.println("Borrando credenciales de la EEPROM...");
-  EEPROM.begin(EEPROM_SIZE);
-  for (int i = 0; i < EEPROM_SIZE; i++) {
-    EEPROM.write(i, 0);
-  }
-  EEPROM.commit();
-  EEPROM.end();
+  Serial.println("Borrando credenciales de NVS (Preferences)...");
+  preferences.begin("wifi-creds", false);
+  
+  // Borra todas las claves dentro del espacio de nombres "wifi-creds"
+  preferences.clear(); 
+  
+  preferences.end();
   Serial.println("Credenciales borradas.");
 }
+
 // =========================================================
 //            FUNCIONES DEL PORTAL DE CONFIGURACIÓN
 // =========================================================
+
 void handleRoot() {
   Serial.println("Cliente conectado al portal.");
   write_text(" Cliente conectado. Escaneando redes... ", false);
@@ -236,8 +246,11 @@ void handleRoot() {
   page += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   page += "<style>body{background-color:#333;color:#fff;font-family:sans-serif;text-align:center;margin-top:50px;}";
   page += "h1{color:#00aaff;} a{color:#ff4500;text-decoration:none;display:block;margin-top:20px;}";
-  page += "select,input,button{width:80%;max-width:300px;padding:12px;margin:8px;border:1px solid #555;border-radius:5px;background-color:#444;color:#fff;font-size:16px;}";
-  page += "button{background-color:#007bff;cursor:pointer;}</style></head><body>";
+  page += "select,input[type=password],input[type=text],button{width:80%;max-width:300px;padding:12px;margin:8px;border:1px solid #555;border-radius:5px;background-color:#444;color:#fff;font-size:16px;}"; // <-- Ajuste de estilo
+  page += "button{background-color:#007bff;cursor:pointer;}";
+  page += "div.showpass{display:inline-block; text-align:left; width:80%; max-width:300px; margin-bottom:10px; font-size:14px;}"; // <-- Estilo para el checkbox
+  page += "div.showpass input{width:auto; margin:0 5px 0 0;}"; // <-- Estilo para el checkbox
+  page += "</style></head><body>";
   page += "<h1>Configurar WiFi para Matriz LED</h1>";
 
   int n = WiFi.scanNetworks();
@@ -250,15 +263,40 @@ void handleRoot() {
       page += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + " (" + WiFi.RSSI(i) + "dBm)</option>";
     }
     page += "</select><br>";
-    page += "<input type='password' name='password' placeholder='Contrasena'><br>";
+    
+    // ----- CAMBIOS AQUÍ -----
+    // 1. Añadimos un 'id' al input de la contraseña
+    page += "<input type='password' name='password' id='pass' placeholder='Contrasena'><br>"; // <-- Se añadió id='pass'
+    
+    // 2. Añadimos el checkbox para mostrar/ocultar
+    page += "<div class='showpass'>"; // <-- Contenedor para alinear
+    page += "<input type='checkbox' onclick='togglePassword()' id='showPass'>"; // <-- El checkbox que llama a la función JS
+    page += "<label for='showPass'>Mostrar Contrasena</label>";
+    page += "</div><br>";
+    // ----- FIN DE CAMBIOS -----
+
     page += "<button type='submit'>Conectar y Guardar</button>";
     page += "</form>";
   }
 
   page += "<a href='/forget'>Olvidar Red Guardada</a>";
+  
+  // 3. Añadimos el script JavaScript al final del body
+  page += "<script>"; // <-- INICIO DEL SCRIPT
+  page += "function togglePassword() {";
+  page += "var x = document.getElementById('pass');";
+  page += "if (x.type === 'password') {";
+  page += "x.type = 'text';";
+  page += "} else {";
+  page += "x.type = 'password';";
+  page += "}";
+  page += "}";
+  page += "</script>"; // <-- FIN DEL SCRIPT
+
   page += "</body></html>";
   server.send(200, "text/html", page);
 }
+
 void handleConnect() {
   Serial.println("Recibidas credenciales WiFi.");
   String ssid = server.arg("ssid");
@@ -309,6 +347,7 @@ void startConfigPortal() {
 // =========================================================
 //                  FUNCIONES DE RED
 // =========================================================
+
 bool connectToWiFi(const char* ssid, const char* password) {
   Serial.print("Intentando conectar a: ");
   Serial.println(ssid);
@@ -373,6 +412,7 @@ void fetchNewQuote() {
 // =========================================================
 //                     SETUP Y LOOP
 // =========================================================
+
 void inicializar() {
   Serial.begin(115200);
   pinMode(oe_pin, OUTPUT);
@@ -438,9 +478,6 @@ void loop() {
         aux = 0;
       }
       aux++;
-      break;
-
-    case WF_CONNECTING:  // Este estado ya no se usa, se maneja en WF_STARTING
       break;
 
     case WF_CONNECTED:
