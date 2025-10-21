@@ -18,9 +18,12 @@
 #define clk_pin 27
 #define sclk_pin 26
 #define dato_pinR 25
+#define BUTTON_PIN 0 // Usa el pin GPIO 0 (usualmente el botón "BOOT")
 
 #define FILAS 16
 #define COLS 64
+
+unsigned long buttonPressTime = 0; // <-- AÑADIR ESTA LÍNEA
 
 // ===== CONSTANTES DE RED Y SERVIDOR =====
 WebServer server(80);
@@ -422,6 +425,7 @@ void inicializar() {
   pinMode(clk_pin, OUTPUT);
   pinMode(sclk_pin, OUTPUT);
   pinMode(dato_pinR, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // <-- AÑADIR ESTA LÍNEA
 
   fastWrite(oe_pin, 1);
   fastWrite(a_pin, 0);
@@ -442,6 +446,33 @@ void setup() {
 }
 void loop() {
   escribe();
+
+    // ----- INICIO DEL CÓDIGO DEL BOTÓN -----
+  if (digitalRead(BUTTON_PIN) == LOW) { // Botón está presionado (LOW por el PULLUP)
+    if (buttonPressTime == 0) {
+      // Acaba de presionarse
+      buttonPressTime = millis();
+      Serial.println("Botón presionado, mantener por 5 seg para borrar WiFi...");
+      write_text(" Mantener para borrar WiFi... ", false);
+      offset = 0;
+    } else if (millis() - buttonPressTime > 5000) {
+      // Se ha mantenido presionado por 5 segundos
+      Serial.println("Borrando credenciales y reiniciando.");
+      clearCredentials(); // Llama a tu función para borrar
+      delay(100);
+      ESP.restart();
+    }
+  } else {
+    // Botón no está presionado (o se soltó)
+    if (buttonPressTime > 0) {
+       // Se soltó antes de los 5 segundos, volvemos a la normalidad
+       Serial.println("Borrado cancelado.");
+       write_text(TEXTO_A_MOSTRAR, false); // Restaura el texto original
+       offset = 0;
+    }
+    buttonPressTime = 0; // Resetea el contador
+  }
+  // ----- FIN DEL CÓDIGO DEL BOTÓN -----
 
   switch (wifiState) {
     case WF_STARTING:
