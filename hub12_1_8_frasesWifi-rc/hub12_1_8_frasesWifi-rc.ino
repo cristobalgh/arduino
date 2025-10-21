@@ -414,7 +414,7 @@ void loop() {
         } else {
           write_text(" Credenciales invalidas. Iniciando portal... ", false);
           delay(5000);
-          clearCredentials();  // Limpiar credenciales incorrectas
+          //clearCredentials();  // Limpiar credenciales incorrectas
           wifiState = WF_DISCONNECTED;
         }
       } else {
