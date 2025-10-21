@@ -20,6 +20,16 @@
 #define dato_pinR 25
 #define BUTTON_PIN 0 // Usa el pin GPIO 0 (usualmente el botón "BOOT")
 
+// ===== CONFIGURACIÓN DE PINES (ESP32 dev module) =====
+#define oe_pin 13
+#define a_pin 12
+#define b_pin 14
+#define c_pin 33
+#define clk_pin 27
+#define sclk_pin 26
+#define dato_pinR 25
+#define BUTTON_PIN 0 // Usa el pin GPIO 0 (usualmente el botón "BOOT")
+
 #define FILAS 16
 #define COLS 64
 
