@@ -20,15 +20,15 @@
 #define dato_pinR 25
 #define BUTTON_PIN 0 // Usa el pin GPIO 0 (usualmente el botón "BOOT")
 
-// ===== CONFIGURACIÓN DE PINES (ESP32 dev module) =====
-#define oe_pin 13
-#define a_pin 12
-#define b_pin 14
-#define c_pin 33
-#define clk_pin 27
-#define sclk_pin 26
-#define dato_pinR 25
-#define BUTTON_PIN 0 // Usa el pin GPIO 0 (usualmente el botón "BOOT")
+// // ===== CONFIGURACIÓN DE PINES (ESP32 C3 dev module) =====
+// #define oe_pin 8//13
+// #define a_pin 0//12
+// #define b_pin 1//14
+// #define c_pin 2//33
+// #define clk_pin 3//27
+// #define sclk_pin 4//6
+// #define dato_pinR 10//25
+// #define BUTTON_PIN 9 // botón "BOOT"
 
 #define FILAS 16
 #define COLS 64
@@ -241,7 +241,6 @@ void clearCredentials() {
   
   // Borra todas las claves dentro del espacio de nombres "wifi-creds"
   preferences.clear(); 
-  
   preferences.end();
   Serial.println("Credenciales borradas.");
 }
@@ -277,7 +276,6 @@ void handleRoot() {
     }
     page += "</select><br>";
     
-    // ----- CAMBIOS AQUÍ -----
     // 1. Añadimos un 'id' al input de la contraseña
     page += "<input type='password' name='password' id='pass' placeholder='Contrasena'><br>"; // <-- Se añadió id='pass'
     
@@ -373,12 +371,14 @@ bool connectToWiFi(const char* ssid, const char* password) {
   WiFi.begin(ssid, password);
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    escribe();  // Mantener la matriz viva durante la espera
-    delay(50);
-    // Pequeño truco para que el punto avance en la pantalla
-    if (attempts % 4 == 0) strcat(connectMsg, ".");
-    write_text(connectMsg, false);
+  // Aumentamos a 100 intentos con delay de 100ms (aprox 10 segundos de espera total)
+  while (WiFi.status() != WL_CONNECTED && attempts < 100) {
+    escribe();  
+    delay(100); 
+    if (attempts % 10 == 0) { // Un punto cada segundo
+        strcat(connectMsg, ".");
+        write_text(connectMsg, false);
+    }
     attempts++;
   }
 
@@ -435,7 +435,7 @@ void inicializar() {
   pinMode(clk_pin, OUTPUT);
   pinMode(sclk_pin, OUTPUT);
   pinMode(dato_pinR, OUTPUT);
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // <-- AÑADIR ESTA LÍNEA
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   fastWrite(oe_pin, 1);
   fastWrite(a_pin, 0);
@@ -495,7 +495,7 @@ void loop() {
         } else {
           write_text(" Credenciales invalidas. Iniciando portal... ", false);
           delay(5000);
-          //clearCredentials();  // Limpiar credenciales incorrectas
+          //clearCredentials();
           wifiState = WF_DISCONNECTED;
         }
       } else {
